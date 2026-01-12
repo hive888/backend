@@ -625,6 +625,10 @@ curl -X POST http://localhost:3000/api/course-access/register \
   }'
 ```
 
+**Expected behaviors:**
+- If `access_codes.payment_amount = 0` → registration happens immediately (no Stripe), response `decision=REGISTERED`
+- If `access_codes.payment_amount > 0` → response `decision=PAYMENT_REQUIRED` and includes `payment_details.checkout_url`
+
 #### 5.2 Get Subscription Status
 ```bash
 curl -X GET http://localhost:3000/api/course-access \
@@ -663,6 +667,21 @@ curl -X POST http://localhost:3000/api/course-access/sections/1/quiz/submit \
 ---
 
 ### 5A. Academy (Multi-course) Tests (NEW)
+
+#### 5A.0 Create Course (Developer Only)
+```bash
+curl -X POST http://localhost:3000/api/academy/courses \
+  -H "Authorization: Bearer YOUR_DEVELOPER_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "self-study",
+    "title": "Self Study Program",
+    "short_description": "PTGR Self Study",
+    "detailed_description": "Full description...",
+    "thumbnail_url": "https://example.com/self-study.png",
+    "is_active": true
+  }'
+```
 
 #### 5A.1 List Courses (Public)
 ```bash
@@ -968,6 +987,10 @@ You can import this into Postman:
 - Check server logs
 - Verify database connection
 - Check environment variables
+- If course payments fail with `Table 'ptgr_db.payment_tracking' doesn't exist`, run:
+  - `migrations/payment_tracking.sql`
+- If you want free vs paid access codes, run:
+  - `migrations/access_codes_payment.sql`
 
 ---
 

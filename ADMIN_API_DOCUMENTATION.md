@@ -917,9 +917,12 @@ Content-Type: application/json
 ```json
 {
   "code": "PTGR2025",
+  "course_id": 1,
   "university_name": "Example University",
   "total_students": 100,
   "max_uses": 100,
+  "payment_amount": 0,
+  "payment_currency": "USD",
   "is_active": true,
   "expires_at": "2025-12-31T23:59:59.000Z",
   "notes": "Optional notes about this access code"
@@ -931,10 +934,17 @@ Content-Type: application/json
 - `is_active` (boolean)
 
 **Optional Fields:**
+- `course_id` (number) - Link this access code to a specific course (recommended for Academy)
 - `university_name` (string)
 - `total_students` (number)
 - `max_uses` (number)
+- `payment_amount` (number) - Additional payment required for this code. Set `0` to make the code completely free.
+- `payment_currency` (string) - Currency for payment amount (default `USD`)
 - `expires_at` (string, ISO 8601 date format)
+- `expires_at` formats supported by API:
+  - ISO 8601 (e.g. `"2026-01-31T00:00:00.000Z"`)
+  - MySQL DATETIME string (e.g. `"2026-01-31 00:00:00"`)
+  - Date-only (e.g. `"2026-01-31"` -> treated as `"2026-01-31 00:00:00"`)
 - `notes` (string)
 
 **Example Request:**
@@ -961,9 +971,12 @@ Authorization: Bearer <access_token>
   "data": {
     "id": 26,
     "code": "PTGR2025NEW",
+    "course_id": 1,
     "university_name": "New University",
     "total_students": 200,
     "max_uses": 200,
+    "payment_amount": 0,
+    "payment_currency": "USD",
     "is_active": 1,
     "expires_at": "2025-12-31T23:59:59.000Z",
     "created_at": "2025-01-09T12:00:00.000Z"

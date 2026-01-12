@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const fs = require('fs');
 const path = require('path');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
@@ -125,6 +126,43 @@ app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 9.5. Simple built-in Google Auth test page (dev utility)
 // Visit: GET /tools/google-auth
+app.get('/tools/google-auth', (req, res) => {
+  try {
+    // Relax Helmet defaults for this *single* page so Google's GSI script and popups can work.
+    // This is a dev utility route; do not reuse these headers for your main app pages.
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "img-src 'self' data: https:",
+        "style-src 'self' 'unsafe-inline'",
+        // allow inline scripts + Google's GSI client
+        "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client",
+        // backend is same-origin; Google scripts may call out
+        "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com",
+        "frame-src https://accounts.google.com",
+        "base-uri 'self'",
+        "form-action 'self'",
+      ].join('; ')
+    );
+    // Needed for popup-based sign-in to work in modern browsers.
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const htmlPath = path.join(__dirname, 'tools', 'google-auth.html');
+    let html = fs.readFileSync(htmlPath, 'utf8');
+
+    // Inject GOOGLE_CLIENT_ID so the Google button works without hardcoding it into the HTML.
+    // (Client ID is public; do NOT inject client secret.)
+    const clientId = process.env.GOOGLE_CLIENT_ID || '';
+    html = html.replaceAll('__GOOGLE_CLIENT_ID__', clientId);
+
+    return res.status(200).send(html);
+  } catch (error) {
+    logger.error('tools/google-auth error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load google auth test page' });
+  }
+});
 
 // 10. Health Check Routes
 // Comprehensive health check with service status

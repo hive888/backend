@@ -1044,6 +1044,8 @@ Get statistics about user roles.
 **POST** `/api/course-access/register` 🔒
 
 Register for course access using access code.
+If the access code is free (`access_codes.payment_amount = 0`), registration happens immediately and Stripe is skipped.
+If the access code requires payment (`payment_amount > 0`), the API returns `decision=PAYMENT_REQUIRED` with a Stripe `checkout_url`.
 
 **Request Body:**
 ```json
@@ -1740,6 +1742,49 @@ Public course catalog.
 }
 ```
 
+### Create Course (Developer Only)
+**POST** `/api/academy/courses` 🔒 (role: `developer`)
+
+Create a new course in the Academy catalog.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "slug": "self-study",
+  "title": "Self Study Program",
+  "short_description": "PTGR Self Study",
+  "detailed_description": "Full description...",
+  "thumbnail_url": "https://...",
+  "is_active": true
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "message": "Course created successfully",
+  "data": {
+    "id": 1,
+    "slug": "self-study",
+    "title": "Self Study Program",
+    "short_description": "PTGR Self Study",
+    "detailed_description": "Full description...",
+    "thumbnail_url": "https://...",
+    "is_active": 1
+  }
+}
+```
+
+**Error Responses:**
+- `409 DUPLICATE_ENTRY`: slug already exists
+
 ### Get Course By Slug
 **GET** `/api/academy/courses/:slug`
 
@@ -1773,6 +1818,7 @@ Authorization: Bearer <access_token>
 **POST** `/api/academy/courses/:slug/redeem` 🔒
 
 Redeem an access code for a specific course. The access code must belong to that course (by `access_codes.course_id`).
+If the code is free (`access_codes.payment_amount = 0`), no Stripe payment is required (access is granted immediately).
 
 **Headers:**
 ```

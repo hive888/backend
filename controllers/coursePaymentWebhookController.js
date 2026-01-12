@@ -3,8 +3,12 @@ const { CoursePaymentService, stripe } = require('../config/coursePaymentService
 const PaymentTracking = require('../models/paymentTrackingModel');
 const AccessCode = require('../models/accessCodeModel');
 const SelfStudyRegistration = require('../models/selfStudyRegistrationModel');
+const Course = require('../models/courseModel');
+const CustomerCourseAccess = require('../models/customerCourseAccessModel');
 const logger = require('../utils/logger');
 const db = require('../config/database');
+
+const SELF_STUDY_COURSE_SLUG = process.env.SELF_STUDY_COURSE_SLUG || 'self-study';
 
 /**
  * POST /api/course-payments/webhook/stripe
@@ -110,10 +114,11 @@ async function processCourseAccessPayment(session) {
     
     // Check if registration already exists
     const existingReg = await SelfStudyRegistration.findByCustomer(conn, customerId);
+    let accessCode = null;
     
     if (!existingReg) {
       // Fetch access code details
-      const accessCode = await AccessCode.getById(accessCodeId);
+      accessCode = await AccessCode.getById(accessCodeId);
       if (!accessCode) {
         throw new Error(`Access code ${accessCodeId} not found`);
       }
@@ -158,6 +163,25 @@ async function processCourseAccessPayment(session) {
         customerId,
         registrationId: existingReg.id,
         paymentId: payment.id
+      });
+    }
+
+    // Ensure multi-course access is updated so slug-based checks work.
+    // Prefer the access code's course_id if present; otherwise fall back to the configured self-study slug.
+    if (!accessCode) {
+      accessCode = await AccessCode.getById(accessCodeId);
+    }
+    let courseId = accessCode?.course_id ? Number(accessCode.course_id) : null;
+    if (!courseId) {
+      const selfStudyCourse = await Course.findBySlug(SELF_STUDY_COURSE_SLUG);
+      courseId = selfStudyCourse?.id ? Number(selfStudyCourse.id) : null;
+    }
+    if (courseId) {
+      await CustomerCourseAccess.upsertActive(conn, {
+        customer_id: customerId,
+        course_id: courseId,
+        granted_via: 'purchase',
+        access_code_id: accessCodeId
       });
     }
     

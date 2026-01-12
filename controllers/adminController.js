@@ -845,12 +845,15 @@ const adminController = {
     try {
       const {
         code,
+        course_id,
         university_name,
         total_students,
         max_uses,
         is_active = true,
         expires_at,
-        notes
+        notes,
+        payment_amount,
+        payment_currency
       } = req.body;
 
       if (!code) {
@@ -863,13 +866,16 @@ const adminController = {
 
       const accessCodeId = await AccessCode.create({
         code: code.toUpperCase().trim(),
+        course_id: course_id || null,
         university_name,
         total_students,
         max_uses,
         is_active,
         expires_at,
         notes,
-        created_by: req.user.user_id
+        created_by: req.user.user_id,
+        payment_amount: payment_amount !== undefined ? Number(payment_amount) : undefined,
+        payment_currency: payment_currency || undefined
       });
 
       logger.info('Admin created access code', {

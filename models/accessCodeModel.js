@@ -2,6 +2,45 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
+function formatMySQLDateTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  // If already a Date
+  if (value instanceof Date) {
+    const iso = value.toISOString(); // UTC
+    return iso.slice(0, 19).replace('T', ' '); // YYYY-MM-DD HH:mm:ss
+  }
+
+  // If date-only string
+  if (typeof value === 'string') {
+    const v = value.trim();
+    if (!v) return null;
+
+    // Already MySQL datetime?
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(v)) return v;
+
+    // Date only -> treat as start of day
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v} 00:00:00`;
+
+    // ISO string -> convert
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+    return v; // let DB validate
+  }
+
+  // numeric timestamps
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+  }
+
+  return value;
+}
+
 const AccessCode = {
   async findActiveByCode(code) {
     try {
@@ -62,6 +101,7 @@ const AccessCode = {
         SELECT 
           id, 
           code,
+          course_id,
           university_name,
           total_students,
           max_uses,
@@ -70,7 +110,9 @@ const AccessCode = {
           created_at,
           expires_at,
           notes,
-          created_by
+          created_by,
+          payment_amount,
+          payment_currency
         FROM access_codes
         WHERE 1=1
       `;
@@ -131,6 +173,7 @@ const AccessCode = {
         SELECT 
           id, 
           code,
+          course_id,
           university_name,
           total_students,
           max_uses,
@@ -139,7 +182,9 @@ const AccessCode = {
           created_at,
           expires_at,
           notes,
-          created_by
+          created_by,
+          payment_amount,
+          payment_currency
         FROM access_codes
         WHERE id = ?
       `;
@@ -152,33 +197,57 @@ const AccessCode = {
   },
 
   async create(data) {
+    const sql = `
+      INSERT INTO access_codes (
+        code,
+        course_id,
+        university_name,
+        total_students,
+        max_uses,
+        is_active,
+        expires_at,
+        notes,
+        created_by,
+        payment_amount,
+        payment_currency
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    const params = [
+      data.code,
+      data.course_id || null,
+      data.university_name || null,
+      data.total_students || null,
+      data.max_uses || null,
+      data.is_active !== undefined ? (data.is_active ? 1 : 0) : 1,
+      formatMySQLDateTime(data.expires_at),
+      data.notes || null,
+      data.created_by || null,
+      data.payment_amount !== undefined ? data.payment_amount : 18.00,
+      data.payment_currency || 'USD'
+    ];
+
     try {
-      const sql = `
-        INSERT INTO access_codes (
-          code,
-          university_name,
-          total_students,
-          max_uses,
-          is_active,
-          expires_at,
-          notes,
-          created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-      
-      const [result] = await db.query(sql, [
-        data.code,
-        data.university_name || null,
-        data.total_students || null,
-        data.max_uses || null,
-        data.is_active !== undefined ? (data.is_active ? 1 : 0) : 1,
-        data.expires_at || null,
-        data.notes || null,
-        data.created_by || null
-      ]);
-      
+      const [result] = await db.query(sql, params);
       return result.insertId;
     } catch (err) {
+      const msg = err?.sqlMessage || err?.message || '';
+      const isCreatedByTruncation =
+        (err?.code === 'WARN_DATA_TRUNCATED' || err?.errno === 1265) &&
+        /Data truncated for column 'created_by'/i.test(msg);
+
+      // Backward-compatible fallback: older DBs defined access_codes.created_by as BIGINT.
+      // In that case, inserting UUIDs (req.user.user_id) will fail; retry with created_by = NULL.
+      if (isCreatedByTruncation) {
+        logger.warn('AccessCode.create: created_by column type mismatch; retrying with created_by = NULL. Run migration: migrations/access_codes_created_by_uuid.sql', {
+          created_by: data.created_by
+        });
+        const retryParams = [...params];
+        retryParams[8] = null; // created_by position
+        const [result] = await db.query(sql, retryParams);
+        return result.insertId;
+      }
+
       logger.error('AccessCode.create error:', err);
       throw err;
     }
@@ -188,12 +257,15 @@ const AccessCode = {
     try {
       const allowedFields = [
         'code',
+        'course_id',
         'university_name',
         'total_students',
         'max_uses',
         'is_active',
         'expires_at',
-        'notes'
+        'notes',
+        'payment_amount',
+        'payment_currency'
       ];
       
       const updates = [];
@@ -205,6 +277,8 @@ const AccessCode = {
           
           if (field === 'is_active') {
             params.push(data[field] ? 1 : 0);
+          } else if (field === 'expires_at') {
+            params.push(formatMySQLDateTime(data[field]));
           } else {
             params.push(data[field]);
           }

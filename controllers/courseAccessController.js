@@ -2,6 +2,8 @@
 const Customer = require('../models/Customer');
 const AccessCode = require('../models/accessCodeModel');
 const SelfStudyRegistration = require('../models/selfStudyRegistrationModel');
+const Course = require('../models/courseModel');
+const CustomerCourseAccess = require('../models/customerCourseAccessModel');
 const { uploadToS3 } = require('../config/s3Config');
 const Chapter = require('../models/chapterModel');
 const Section = require('../models/sectionModel');
@@ -22,6 +24,8 @@ const logger = require('../utils/logger');
 // LOCK codes: 0=open, 1=locked by prerequisite, 2=locked by subscription
 const LOCK = { OPEN: 0, PREREQ: 1, SUBONLY: 2 };
 
+const SELF_STUDY_COURSE_SLUG = process.env.SELF_STUDY_COURSE_SLUG || 'self-study';
+
 function normalizePhone(raw) {
   if (!raw) return '';
   return String(raw).replace(/\D/g, '');
@@ -29,6 +33,52 @@ function normalizePhone(raw) {
 function pct(done, total) {
   if (!total) return 0;
   return Math.round((done / total) * 100);
+}
+
+async function getSelfStudyCourse() {
+  try {
+    return await Course.findBySlug(SELF_STUDY_COURSE_SLUG);
+  } catch (_) {
+    return null;
+  }
+}
+
+function isActiveAndNotExpired(accessRow) {
+  if (!accessRow) return false;
+  if (accessRow.status !== 'active') return false;
+  if (!accessRow.expires_at) return true;
+  return new Date(accessRow.expires_at) > new Date();
+}
+
+/**
+ * Backward-compat helper:
+ * - Primary truth for legacy endpoints remains selfstudy_registrations (old structure)
+ * - But if customer has active customer_course_access for SELF_STUDY_COURSE_SLUG, auto-create legacy registration.
+ */
+async function ensureSelfStudyRegistration(conn, customerId) {
+  const customer_id = Number(customerId);
+  if (!customer_id) return null;
+
+  const existing = await SelfStudyRegistration.findByCustomer(conn, customer_id);
+  if (existing && existing.status === 'active') return existing;
+
+  const course = await getSelfStudyCourse();
+  if (!course) return existing; // keep old behavior if not configured/seeded
+
+  const [rows] = await conn.query(
+    `SELECT status, expires_at, access_code_id
+     FROM customer_course_access
+     WHERE customer_id = ? AND course_id = ?
+     LIMIT 1`,
+    [customer_id, course.id]
+  );
+  const access = rows[0] || null;
+  if (!isActiveAndNotExpired(access)) return existing;
+
+  if (!existing) {
+    await SelfStudyRegistration.create(conn, { customer_id, access_code_id: access.access_code_id ?? null });
+  }
+  return await SelfStudyRegistration.findByCustomer(conn, customer_id);
 }
 
 /** Section is complete if:
@@ -112,9 +162,30 @@ exports.checkCourseAccessFromToken = async (req, res) => {
       });
     }
 
+    // Optional (if self-study course exists): enforce that access code is for self-study
+    const selfStudyCourse = await getSelfStudyCourse();
+    if (selfStudyCourse && lockedCode.course_id && Number(lockedCode.course_id) !== Number(selfStudyCourse.id)) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        code: 'ACCESS_CODE_WRONG_COURSE',
+        message: 'This access code is not valid for the self-study course.'
+      });
+    }
+
     // Check if customer already registered
     const existingReg = await SelfStudyRegistration.findByCustomer(conn, customer.customer_id);
     if (existingReg) {
+      // Keep new multi-course table in sync (best-effort)
+      if (selfStudyCourse) {
+        await CustomerCourseAccess.upsertActive(conn, {
+          customer_id: customer.customer_id,
+          course_id: selfStudyCourse.id,
+          // DB enum is: ('access_code','purchase','admin'). This legacy flow is still access-code based.
+          granted_via: 'access_code',
+          access_code_id: existingReg.access_code_id || lockedCode.id
+        });
+      }
       await conn.commit();
       return res.status(200).json({
         success: true, 
@@ -141,11 +212,21 @@ exports.checkCourseAccessFromToken = async (req, res) => {
 
     // ========== PAYMENT CHECK ==========
     // Check if payment is required and completed
+    const codeAmountRaw = lockedCode.payment_amount;
+    const codeAmount = codeAmountRaw === null || codeAmountRaw === undefined ? 18.0 : Number(codeAmountRaw);
+    const codeCurrency = lockedCode.payment_currency || 'USD';
+
     const existingPayment = await PaymentTracking.getByCustomerAndAccessCode(customer.customer_id, lockedCode.id);
     
     let paymentRequired = true;
     let paymentStatus = 'not_started';
     let paymentId = null;
+
+    // Free code: no additional payment required
+    if (!Number.isFinite(codeAmount) || codeAmount <= 0) {
+      paymentRequired = false;
+      paymentStatus = 'free';
+    }
     
     if (existingPayment) {
       paymentStatus = existingPayment.payment_status;
@@ -164,8 +245,8 @@ exports.checkCourseAccessFromToken = async (req, res) => {
         paymentId = await PaymentTracking.create(conn, {
           customer_id: customer.customer_id,
           access_code_id: lockedCode.id,
-          amount: 18.00,
-          currency: 'USD',
+          amount: codeAmount,
+          currency: codeCurrency,
           payment_method: 'stripe',
           payment_status: 'pending',
           payment_details: {
@@ -190,8 +271,8 @@ exports.checkCourseAccessFromToken = async (req, res) => {
       try {
         // Create Stripe checkout session using NEW CoursePaymentService
         const paymentResult = await CoursePaymentService.createCourseAccessCheckoutSession(
-          18.00, // USD amount
-          'USD', // Currency
+          codeAmount, // Amount
+          codeCurrency, // Currency
           paymentReference, // Payment reference
           {
             customer_id: customer.customer_id,
@@ -232,14 +313,14 @@ exports.checkCourseAccessFromToken = async (req, res) => {
           success: true,
           decision: 'PAYMENT_REQUIRED',
           code: 'PAYMENT_REQUIRED',
-          message: 'Payment of $18 USD is required to complete registration.',
+          message: `Payment of ${codeAmount} ${codeCurrency} is required to complete registration.`,
           payment_required: true,
           payment_details: {
             payment_id: paymentId,
             payment_reference: paymentReference,
             status: paymentStatus,
-            amount: 18.00,
-            currency: 'USD',
+            amount: codeAmount,
+            currency: codeCurrency,
             access_code: lockedCode.code,
             university_name: lockedCode.university_name,
             checkout_url: paymentResult.url,
@@ -275,6 +356,17 @@ exports.checkCourseAccessFromToken = async (req, res) => {
       customer_id: customer.customer_id,
       access_code_id: lockedCode.id
     });
+
+    // Keep new multi-course table in sync (best-effort)
+    if (selfStudyCourse) {
+      await CustomerCourseAccess.upsertActive(conn, {
+        customer_id: customer.customer_id,
+        course_id: selfStudyCourse.id,
+        // DB enum is: ('access_code','purchase','admin'). This legacy flow is still access-code based.
+        granted_via: 'access_code',
+        access_code_id: lockedCode.id
+      });
+    }
 
     // Update payment record with registration ID
     if (paymentId) {
@@ -348,7 +440,7 @@ exports.getSubscriptionStatus = async (req, res) => {
       });
     }
 
-    const reg = await SelfStudyRegistration.findByCustomer(conn, customer.customer_id);
+    const reg = await ensureSelfStudyRegistration(conn, customer.customer_id);
     const subscribed = !!(reg && reg.status === 'active');
 
     if (!subscribed) {
@@ -548,7 +640,7 @@ exports.getSubsectionContent = async (req, res) => {
       return res.status(403).json({ success: false, code: 'CUSTOMER_NOT_FOUND', message: 'Customer not found.' });
     }
 
-    const reg = await SelfStudyRegistration.findByCustomer(conn, customer.customer_id);
+    const reg = await ensureSelfStudyRegistration(conn, customer.customer_id);
     console.log('🧾 Registration:', reg);
     if (!reg || reg.status !== 'active') {
       console.log('❌ Not subscribed or inactive registration');
@@ -701,7 +793,7 @@ exports.completeSubsection = async (req, res) => {
       return res.status(403).json({ success: false, code: 'CUSTOMER_NOT_FOUND', message: 'Customer not found.' });
     }
 
-    const reg = await SelfStudyRegistration.findByCustomer(conn, customer.customer_id);
+    const reg = await ensureSelfStudyRegistration(conn, customer.customer_id);
     if (!reg || reg.status !== 'active') {
       return res.status(403).json({ success: false, code: 'NOT_SUBSCRIBED', message: 'You are not subscribed.' });
     }
@@ -802,7 +894,7 @@ exports.getSubsectionQuizInfo = async (req, res) => {
     if (!subsectionId) return res.status(400).json({ success:false, code:'BAD_REQUEST', message:'Invalid subsection id.' });
 
     // must be subscribed
-    const reg = await SelfStudyRegistration.findByCustomer(conn, customerId);
+    const reg = await ensureSelfStudyRegistration(conn, customerId);
     if (!reg || reg.status !== 'active') {
       return res.status(403).json({ success:false, code:'NOT_SUBSCRIBED', message:'You are not subscribed.' });
     }
@@ -885,7 +977,7 @@ exports.submitSubsectionQuiz = async (req, res) => {
     }
 
     // ensure subscribed
-    const reg = await SelfStudyRegistration.findByCustomer(conn, customerId);
+    const reg = await ensureSelfStudyRegistration(conn, customerId);
     if (!reg || reg.status !== 'active') {
       return res.status(403).json({ success:false, code:'NOT_SUBSCRIBED', message:'You are not subscribed.' });
     }

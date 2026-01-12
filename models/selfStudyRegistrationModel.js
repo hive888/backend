@@ -14,6 +14,17 @@ const SelfStudyRegistration = {
     return rows[0] || null;
   },
 
+  async findById(conn, id) {
+    const sql = `
+      SELECT id, status, registered_at, access_code_id, certificate_url, customer_id
+      FROM selfstudy_registrations
+      WHERE id = ?
+      LIMIT 1
+    `;
+    const [rows] = await conn.query(sql, [id]);
+    return rows[0] || null;
+  },
+
   async create(conn, { customer_id, access_code_id = null }) {
     const sql = `
       INSERT INTO selfstudy_registrations (customer_id, access_code_id)
