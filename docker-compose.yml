@@ -1,0 +1,12 @@
+services:
+  hive888-backend:
+    build: .
+    container_name: hive888-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "4001:4001"
+    # If you want container to access host network resources, usually not needed:
+    # network_mode: bridge
+
