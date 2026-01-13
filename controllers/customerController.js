@@ -40,6 +40,55 @@ const customerController = {
             is_kyc_verified: customer.is_kyc_verified
         };
     },
+
+    /**
+     * Calculate profile completion percentage (0-100)
+     * Returns percentage based on filled profile fields
+     */
+    calculateProfileCompletion(customer, profileDetails) {
+        if (!customer) return 0;
+
+        const fields = {
+            // Basic required fields (40 points total)
+            first_name: customer.first_name && String(customer.first_name).trim().length > 0,
+            last_name: customer.last_name && String(customer.last_name).trim().length > 0,
+            email: customer.email && String(customer.email).trim().length > 0,
+            phone: customer.phone && String(customer.phone).trim().length > 0 && customer.phone !== '99999999999', // Exclude default phone
+            
+            // Basic optional fields (30 points total)
+            profile_picture: customer.profile_picture && String(customer.profile_picture).trim().length > 0,
+            date_of_birth: customer.date_of_birth !== null && customer.date_of_birth !== undefined,
+            gender: customer.gender && customer.gender !== 'prefer_not_to_say' && String(customer.gender).trim().length > 0,
+            
+            // Profile details fields (30 points total)
+            location: profileDetails?.location && String(profileDetails.location).trim().length > 0,
+            bio: profileDetails?.bio && String(profileDetails.bio).trim().length > 0,
+            social_links: profileDetails?.social_links && typeof profileDetails.social_links === 'object' && Object.keys(profileDetails.social_links).length > 0
+        };
+
+        // Calculate points (10 points per field, total 100)
+        const fieldWeights = {
+            first_name: 10,
+            last_name: 10,
+            email: 10,
+            phone: 10,
+            profile_picture: 10,
+            date_of_birth: 10,
+            gender: 10,
+            location: 10,
+            bio: 10,
+            social_links: 10
+        };
+
+        let totalPoints = 0;
+        Object.keys(fieldWeights).forEach(field => {
+            if (fields[field]) {
+                totalPoints += fieldWeights[field];
+            }
+        });
+
+        return Math.min(100, Math.max(0, totalPoints));
+    },
     
     async createCustomer(req, res) {
         try {
@@ -1341,4 +1390,432 @@ customerController.verifyPhoneOTP = async (req, res) => {
     });
   }
 };
+
+// Extended profile details controllers
+customerController.getMyProfileDetails = async (req, res) => {
+  try {
+    const customerId = req.user?.customer_id;
+    if (!customerId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    // Fetch basic customer info
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Customer not found',
+        code: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    // Fetch profile details
+    const CustomerProfileDetails = require('../models/customerProfileDetailsModel');
+    const profileDetails = await CustomerProfileDetails.findByCustomerId(customerId);
+
+    // Combine basic customer info with profile details
+    const basicInfo = customerController.sanitizeCustomer(customer);
+    const completionPercentage = customerController.calculateProfileCompletion(customer, profileDetails);
+    
+    const response = {
+      ...basicInfo,
+      location: profileDetails?.location ?? null,
+      bio: profileDetails?.bio ?? null,
+      social_links: profileDetails?.social_links ?? {},
+      created_at: profileDetails?.created_at ?? null,
+      updated_at: profileDetails?.updated_at ?? null,
+      profile_completion_percentage: completionPercentage
+    };
+
+    res.json({
+      success: true,
+      message: 'Profile details retrieved successfully',
+      data: response
+    });
+  } catch (err) {
+    logger.error('Failed to retrieve profile details (me):', {
+      error: err.message,
+      stack: err.stack,
+      customerId: req.user?.customer_id
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve profile details',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
+customerController.updateMyProfileDetails = async (req, res) => {
+  try {
+    const customerId = req.user?.customer_id;
+    if (!customerId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    const { file, body } = req || {};
+    const requestingUser = req.user;
+
+    // Get existing customer
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Customer not found',
+        code: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    // Separate customer fields from profile details fields
+    const profileDetailsFields = ['location', 'bio', 'social_links'];
+    const customerUpdateData = {};
+    const profileDetailsUpdateData = {};
+
+    // Handle file upload if present
+    let profilePictureUrl = customer.profile_picture;
+    if (file) {
+      try {
+        const newUrl = await uploadToS3(file);
+        
+        // Delete old picture if it exists
+        if (profilePictureUrl) {
+          try {
+            await deleteFromS3(profilePictureUrl);
+            logger.info('Old profile picture deleted', { customerId: customerId });
+          } catch (deleteErr) {
+            logger.warn('Failed to delete old profile picture', { 
+              error: deleteErr.message,
+              customerId: customerId
+            });
+          }
+        }
+
+        profilePictureUrl = newUrl;
+        customerUpdateData.profile_picture = profilePictureUrl;
+      } catch (uploadErr) {
+        logger.error('Profile picture upload failed', { 
+          error: uploadErr.message,
+          customerId: customerId
+        });
+        return res.status(500).json({ 
+          success: false,
+          errors: [{
+            field: 'profile_picture',
+            message: 'failed to upload profile picture'
+          }]
+        });
+      }
+    }
+
+    // Process customer fields
+    const allowedCustomerFields = [
+      'first_name',
+      'last_name',
+      'profile_picture',
+      'date_of_birth',
+      'gender',
+      'phone'
+    ];
+
+    Object.keys(body || {}).forEach(key => {
+      if (!profileDetailsFields.includes(key) && allowedCustomerFields.includes(key)) {
+        if (key === 'profile_picture' && !file) {
+          // Only allow URL string if no file upload
+          customerUpdateData[key] = body[key];
+        } else if (key !== 'profile_picture') {
+          customerUpdateData[key] = body[key];
+        }
+      }
+    });
+
+    // Field restrictions for non-developers
+    if (requestingUser.role_name !== 'developer') {
+      const protectedFields = [
+        'customer_type',
+        'is_email_verified',
+        'is_phone_verified',
+        'two_factor_enabled',
+        'is_kyc_verified',
+        'email'
+      ];
+      protectedFields.forEach(field => delete customerUpdateData[field]);
+    }
+
+    // Update customer if there are customer fields to update
+    if (Object.keys(customerUpdateData).length > 0) {
+      await Customer.update(customerId, customerUpdateData);
+    }
+
+    // Process profile details fields
+    const CustomerProfileDetails = require('../models/customerProfileDetailsModel');
+    const existingProfileDetails = await CustomerProfileDetails.findByCustomerId(customerId);
+    
+    // Handle social links merging
+    let socialLinks = existingProfileDetails?.social_links || {};
+    if (body.social_links !== undefined) {
+      socialLinks = { ...socialLinks, ...body.social_links };
+      // Remove null values (allows clearing individual links)
+      Object.keys(socialLinks).forEach(key => {
+        if (socialLinks[key] === null) {
+          delete socialLinks[key];
+        }
+      });
+    }
+
+    profileDetailsUpdateData.location = body.location !== undefined ? body.location : (existingProfileDetails?.location ?? null);
+    profileDetailsUpdateData.bio = body.bio !== undefined ? body.bio : (existingProfileDetails?.bio ?? null);
+    profileDetailsUpdateData.social_links = socialLinks;
+
+    // Update profile details if there are profile details fields to update
+    const updatedProfileDetails = await CustomerProfileDetails.upsertByCustomerId(customerId, profileDetailsUpdateData);
+
+    // Fetch updated customer info to return combined response
+    const updatedCustomer = await Customer.findById(customerId);
+    const basicInfo = customerController.sanitizeCustomer(updatedCustomer);
+    const completionPercentage = customerController.calculateProfileCompletion(updatedCustomer, updatedProfileDetails);
+    
+    const response = {
+      ...basicInfo,
+      location: updatedProfileDetails.location ?? null,
+      bio: updatedProfileDetails.bio ?? null,
+      social_links: updatedProfileDetails.social_links ?? {},
+      created_at: updatedProfileDetails.created_at ?? null,
+      updated_at: updatedProfileDetails.updated_at ?? null,
+      profile_completion_percentage: completionPercentage
+    };
+
+    logger.audit('Profile details updated (me)', {
+      userId: req.user.user_id,
+      customerId: customerId,
+      changedFields: Object.keys(body || {})
+    });
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: response
+    });
+  } catch (err) {
+    logger.error('Failed to update profile details (me):', {
+      error: err.message,
+      stack: err.stack,
+      customerId: req.user?.customer_id
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update profile',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
+customerController.getProfileDetailsByCustomerId = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customerId = parseInt(id);
+
+    // Fetch basic customer info
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Customer not found',
+        code: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    // Fetch profile details
+    const CustomerProfileDetails = require('../models/customerProfileDetailsModel');
+    const profileDetails = await CustomerProfileDetails.findByCustomerId(customerId);
+
+    // Combine basic customer info with profile details
+    const basicInfo = customerController.sanitizeCustomer(customer);
+    const response = {
+      ...basicInfo,
+      location: profileDetails?.location ?? null,
+      bio: profileDetails?.bio ?? null,
+      social_links: profileDetails?.social_links ?? {},
+      created_at: profileDetails?.created_at ?? null,
+      updated_at: profileDetails?.updated_at ?? null
+    };
+
+    res.json({
+      success: true,
+      message: 'Profile details retrieved successfully',
+      data: response
+    });
+  } catch (err) {
+    logger.error('Failed to retrieve profile details by customer ID:', {
+      error: err.message,
+      stack: err.stack,
+      customerId: req.params?.id
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve profile details',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
+customerController.updateProfileDetailsByCustomerId = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customerId = parseInt(id);
+    const { file, body } = req || {};
+    const requestingUser = req.user;
+
+    // Get existing customer
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Customer not found',
+        code: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    // Separate customer fields from profile details fields
+    const profileDetailsFields = ['location', 'bio', 'social_links'];
+    const customerUpdateData = {};
+    const profileDetailsUpdateData = {};
+
+    // Handle file upload if present
+    let profilePictureUrl = customer.profile_picture;
+    if (file) {
+      try {
+        const newUrl = await uploadToS3(file);
+        
+        // Delete old picture if it exists
+        if (profilePictureUrl) {
+          try {
+            await deleteFromS3(profilePictureUrl);
+            logger.info('Old profile picture deleted', { customerId: customerId });
+          } catch (deleteErr) {
+            logger.warn('Failed to delete old profile picture', { 
+              error: deleteErr.message,
+              customerId: customerId
+            });
+          }
+        }
+
+        profilePictureUrl = newUrl;
+        customerUpdateData.profile_picture = profilePictureUrl;
+      } catch (uploadErr) {
+        logger.error('Profile picture upload failed', { 
+          error: uploadErr.message,
+          customerId: customerId
+        });
+        return res.status(500).json({ 
+          success: false,
+          errors: [{
+            field: 'profile_picture',
+            message: 'failed to upload profile picture'
+          }]
+        });
+      }
+    }
+
+    // Process customer fields
+    const allowedCustomerFields = requestingUser.role_name === 'developer' 
+      ? ['first_name', 'last_name', 'profile_picture', 'date_of_birth', 'gender', 'phone', 'email']
+      : ['first_name', 'last_name', 'profile_picture', 'date_of_birth', 'gender', 'phone'];
+
+    Object.keys(body || {}).forEach(key => {
+      if (!profileDetailsFields.includes(key) && allowedCustomerFields.includes(key)) {
+        if (key === 'profile_picture' && !file) {
+          // Only allow URL string if no file upload
+          customerUpdateData[key] = body[key];
+        } else if (key !== 'profile_picture') {
+          customerUpdateData[key] = body[key];
+        }
+      }
+    });
+
+    // Field restrictions for non-developers
+    if (requestingUser.role_name !== 'developer') {
+      const protectedFields = [
+        'customer_type',
+        'is_email_verified',
+        'is_phone_verified',
+        'two_factor_enabled',
+        'is_kyc_verified',
+        'email'
+      ];
+      protectedFields.forEach(field => delete customerUpdateData[field]);
+    }
+
+    // Update customer if there are customer fields to update
+    if (Object.keys(customerUpdateData).length > 0) {
+      await Customer.update(customerId, customerUpdateData);
+    }
+
+    // Process profile details fields
+    const CustomerProfileDetails = require('../models/customerProfileDetailsModel');
+    const existingProfileDetails = await CustomerProfileDetails.findByCustomerId(customerId);
+    
+    // Handle social links merging
+    let socialLinks = existingProfileDetails?.social_links || {};
+    if (body.social_links !== undefined) {
+      socialLinks = { ...socialLinks, ...body.social_links };
+      // Remove null values (allows clearing individual links)
+      Object.keys(socialLinks).forEach(key => {
+        if (socialLinks[key] === null) {
+          delete socialLinks[key];
+        }
+      });
+    }
+
+    profileDetailsUpdateData.location = body.location !== undefined ? body.location : (existingProfileDetails?.location ?? null);
+    profileDetailsUpdateData.bio = body.bio !== undefined ? body.bio : (existingProfileDetails?.bio ?? null);
+    profileDetailsUpdateData.social_links = socialLinks;
+
+    // Update profile details if there are profile details fields to update
+    const updatedProfileDetails = await CustomerProfileDetails.upsertByCustomerId(customerId, profileDetailsUpdateData);
+
+    // Fetch updated customer info to return combined response
+    const updatedCustomer = await Customer.findById(customerId);
+    const basicInfo = customerController.sanitizeCustomer(updatedCustomer);
+    const response = {
+      ...basicInfo,
+      location: updatedProfileDetails.location ?? null,
+      bio: updatedProfileDetails.bio ?? null,
+      social_links: updatedProfileDetails.social_links ?? {},
+      created_at: updatedProfileDetails.created_at ?? null,
+      updated_at: updatedProfileDetails.updated_at ?? null
+    };
+
+    logger.audit('Profile details updated by customer ID', {
+      userId: req.user.user_id,
+      customerId: customerId,
+      changedFields: Object.keys(body || {})
+    });
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: response
+    });
+  } catch (err) {
+    logger.error('Failed to update profile details by customer ID:', {
+      error: err.message,
+      stack: err.stack,
+      customerId: req.params?.id
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update profile',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
 module.exports = customerController;

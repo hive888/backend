@@ -90,6 +90,22 @@ router.put('/me',
   customerController.updateMe
 );
 
+// Extended profile details (location/bio/social links)
+router.get(
+  '/me/profile-details',
+  authMiddleware.authenticate,
+  customerController.getMyProfileDetails
+);
+
+router.put(
+  '/me/profile-details',
+  authMiddleware.authenticate,
+  customerValidator.updateProfileDetailsWithCustomerValidation,
+  validate,
+  handleFileUpload,
+  customerController.updateMyProfileDetails
+);
+
 // Customer update route - for general updates (may include profile picture)
 router.put('/:id',
   authMiddleware.authenticate,
@@ -122,6 +138,27 @@ router.patch('/:id/profile-picture',
   validate,
   upload.single('profile_picture'),
   customerController.updateProfilePicture
+);
+
+// Extended profile details by customer id (owner or developer)
+router.get(
+  '/:id/profile-details',
+  authMiddleware.authenticate,
+  customerValidator.customerIdParamValidation,
+  validate,
+  customerController.verifyOwnershipOrDeveloper,
+  customerController.getProfileDetailsByCustomerId
+);
+
+router.put(
+  '/:id/profile-details',
+  authMiddleware.authenticate,
+  customerValidator.customerIdParamValidation,
+  customerValidator.updateProfileDetailsWithCustomerValidation,
+  validate,
+  handleFileUpload,
+  customerController.verifyOwnershipOrDeveloper,
+  customerController.updateProfileDetailsByCustomerId
 );
 
 // Get all customers
