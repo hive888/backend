@@ -32,32 +32,41 @@ const Customer = {
             throw err;
         }
     },
-    async findByTelegramId(telegramId) {
-    try {
-        const [rows] = await db.query(
-            `SELECT 
-                customer_id,
-                first_name,
-                last_name,
-                email,
-                phone,
-                is_email_verified,
-                is_phone_verified,
-                is_kyc_verified,
-                profile_picture
-             FROM customers 
-             WHERE telegram_id = ?`,
-            [telegramId]
-        );
-        return rows[0] || null;
-    } catch (err) {
-        logger.error('Failed to find customer by Telegram ID', {
-            telegramId: telegramId,
-            error: err.message
-        });
-        throw err;
-    }
-},
+    async findByTelegramId(telegramUserId) {
+        try {
+            const [rows] = await db.query(
+                `SELECT * FROM customers 
+                 WHERE telegram_user_id = ? AND deleted_at IS NULL`,
+                [telegramUserId]
+            );
+            return rows[0] || null;
+        } catch (err) {
+            logger.error('Failed to find customer by Telegram user ID', {
+                telegramUserId: telegramUserId,
+                error: err.message
+            });
+            throw err;
+        }
+    },
+
+    async linkTelegramAccount(customerId, telegramUserId, telegramUsername) {
+        try {
+            await db.query(
+                `UPDATE customers 
+                 SET telegram_user_id = ?, telegram_username = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE customer_id = ?`,
+                [telegramUserId, telegramUsername || null, customerId]
+            );
+            return await this.findById(customerId);
+        } catch (err) {
+            logger.error('Failed to link Telegram account', {
+                customerId,
+                telegramUserId,
+                error: err.message
+            });
+            throw err;
+        }
+    },
 
      async updateVerificationStatus(customer_id, is_email_verified, email_verified_at) {
         try {

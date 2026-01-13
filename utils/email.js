@@ -1356,4 +1356,5 @@ module.exports = {
   sendWelcomeEmail,
   sendTokenInterestEmail,
   sendTalentRequestEmail,
+  sendEmail,
 };

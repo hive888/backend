@@ -869,7 +869,15 @@ exports.completeSubsection = async (req, res) => {
     }
 
     await CustomerProgress.markSubsectionCompleted(customer.customer_id, subsectionId);
-    return res.status(200).json({ success: true, message: 'Subsection marked as completed.' });
+    
+    // Get next subsection ID
+    const next_subsection_id = subsectionId === 259 ? null : await Subsection.getNextIdInSection(subsectionId);
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Subsection marked as completed.',
+      next_subsection_id
+    });
 
   } catch (err) {
     logger.error('completeSubsection error:', err);

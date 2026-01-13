@@ -21,6 +21,7 @@ const sectionsRoutes = require('./routes/sectionsRoutes');
 const subsectionsRoutes = require('./routes/subsectionsRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const academyRoutes = require('./routes/academyRoutes');
+const telegramRoutes = require('./routes/telegramRoutes');
 const authMiddleware = require('./middleware/authMiddleware');
 const logger = require('./utils/logger');
 const app = express();
@@ -140,6 +141,7 @@ app.use('/api/sections', sectionsRoutes);
 app.use('/api/subsections', subsectionsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academy', academyRoutes);
+app.use('/api/telegram', telegramRoutes);
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 9.5. Simple built-in Google Auth test page (dev utility)

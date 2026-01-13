@@ -106,7 +106,7 @@ router.post('/login', authValidator.loginValidation, validate, async (req, res) 
         const accessToken = jwt.sign(
             payload,
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
         );
 
         const refreshToken = jwt.sign(
@@ -180,7 +180,7 @@ router.post('/refresh', authValidator.refreshTokenValidation, validate, authMidd
         const accessToken = jwt.sign(
             payload,
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
         );
 
         // Generate new refresh token (token rotation for security)
@@ -451,7 +451,7 @@ router.post('/google-login', authValidator.googleLoginValidation, validate, asyn
 
         // Generate tokens
         const accessToken = jwt.sign(jwtPayload, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRES_IN || '15m'
+            expiresIn: process.env.JWT_EXPIRES_IN || '7d'
         });
 
         const refreshToken = jwt.sign(jwtPayload, process.env.JWT_REFRESH_SECRET, {
