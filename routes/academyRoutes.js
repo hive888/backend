@@ -8,6 +8,7 @@ const academyController = require('../controllers/academyController');
 
 // Public course catalog
 router.get('/courses', academyController.listCourses);
+router.get('/courses/me', authMiddleware.authenticate, academyController.listMyCourses);
 router.post(
   '/courses',
   authMiddleware.authenticate,

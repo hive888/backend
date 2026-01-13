@@ -11,9 +11,9 @@ const db = require('../config/database');
 const SELF_STUDY_COURSE_SLUG = process.env.SELF_STUDY_COURSE_SLUG || 'self-study';
 
 /**
- * POST /api/course-payments/webhook/stripe
- * Stripe webhook handler for course access payment events
- * MODIFIED: Works with your existing webhook route (no signature verification)
+ * Stripe webhook handler for course access payment events.
+ * Note: This controller is invoked from `POST /api/webhook/stripe-webhook` when
+ * `metadata.payment_type === 'course_access'`. Signature verification is handled in the route.
  */
 exports.handleStripeWebhook = async (req, res) => {
   try {

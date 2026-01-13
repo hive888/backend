@@ -2,6 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const reservationController = require('../controllers/reservationController');
+const logger = require('../utils/logger');
+
+// Stripe signature verification (recommended for production)
+const { stripe } = require('../config/coursePaymentService');
 
 // ADD THIS LINE
 const coursePaymentController = require('../controllers/coursePaymentWebhookController');
@@ -9,7 +13,29 @@ const coursePaymentController = require('../controllers/coursePaymentWebhookCont
 router.post('/stripe-webhook', (req, res, next) => {
   console.log('✅ Extracting payment information from webhook...');
   
-  const event = req.body;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET_TEST || process.env.STRIPE_WEBHOOK_SECRET;
+  let event = req.body;
+
+  // Verify Stripe signature if secret is configured.
+  // If you haven't configured it yet, we fall back to the previous behavior (NOT recommended for prod).
+  if (webhookSecret) {
+    try {
+      const signature = req.headers['stripe-signature'];
+      if (!signature) {
+        return res.status(400).json({ success: false, error: 'Missing Stripe-Signature header', code: 'MISSING_STRIPE_SIGNATURE' });
+      }
+      if (!req.rawBody) {
+        return res.status(400).json({ success: false, error: 'Missing raw body for webhook verification', code: 'MISSING_RAW_BODY' });
+      }
+      event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
+    } catch (err) {
+      logger.error('Stripe webhook signature verification failed:', err);
+      return res.status(400).json({ success: false, error: 'Webhook signature verification failed', code: 'INVALID_WEBHOOK_SIGNATURE' });
+    }
+  } else {
+    logger.warn('STRIPE_WEBHOOK_SECRET is not set; accepting Stripe webhooks without signature verification (NOT recommended).');
+  }
+
   const session = event.data.object;
   
   // Extract all the information
@@ -30,7 +56,7 @@ router.post('/stripe-webhook', (req, res, next) => {
     customerEmail,
     eventType,
     sessionId,
-    rawBody: JSON.stringify(req.body), // For Stripe verification
+    rawBody: req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body),
     sessionData: session // Full session object
   };
   

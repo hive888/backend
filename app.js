@@ -26,7 +26,20 @@ const logger = require('./utils/logger');
 const app = express();
 
 // 1. Body parsers
-app.use(express.json({ limit: '1000kb' }));
+// Stripe webhooks require the raw request body for signature verification.
+// We capture it only for the Stripe webhook route so other endpoints behave normally.
+app.use(express.json({
+  limit: '1000kb',
+  verify: (req, _res, buf) => {
+    try {
+      if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/stripe-webhook')) {
+        req.rawBody = buf;
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '1000kb' }));
 
 // 1.5. Body validation middleware (ensure body exists for POST/PUT/PATCH)
@@ -36,6 +49,11 @@ app.use(bodyValidationMiddleware);
 // 2. Improved Sanitization Middleware
 app.use((req, res, next) => {
   try {
+    // IMPORTANT: Do not mutate Stripe webhook payloads (breaks signature verification + may corrupt data)
+    if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/stripe-webhook')) {
+      return next();
+    }
+
     // Sanitize body if it exists
     if (req.body && Object.keys(req.body).length > 0) {
       req.body = mongoSanitize.sanitize(req.body);

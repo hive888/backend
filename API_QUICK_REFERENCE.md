@@ -138,7 +138,7 @@ Authorization: Bearer <access_token>
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/webhook/stripe-webhook` | ❌ | Stripe webhook handler |
+| POST | `/api/webhook/stripe-webhook` | ❌ | Stripe webhook handler |
 
 ---
 
@@ -146,7 +146,7 @@ Authorization: Bearer <access_token>
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/health` | ❌ | Health check |
+| GET | `/api/health` | ❌ | Health check |
 
 ---
 

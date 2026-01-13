@@ -18,6 +18,21 @@ const CustomerCourseAccess = {
     }
   },
 
+  async listByCustomer(customer_id) {
+    try {
+      const [rows] = await db.query(
+        `SELECT course_id, status, expires_at
+         FROM customer_course_access
+         WHERE customer_id = ?`,
+        [customer_id]
+      );
+      return rows || [];
+    } catch (err) {
+      logger.error('CustomerCourseAccess.listByCustomer error:', err);
+      throw err;
+    }
+  },
+
   async upsertActive(conn, { customer_id, course_id, granted_via = 'access_code', access_code_id = null, expires_at = null }) {
     const sql = `
       INSERT INTO customer_course_access

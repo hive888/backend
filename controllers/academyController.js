@@ -33,6 +33,40 @@ exports.listCourses = async (_req, res) => {
   }
 };
 
+// Authenticated: list the course catalog with a flag for whether the current customer is registered/has access
+exports.listMyCourses = async (req, res) => {
+  try {
+    const customerId = req.user?.customer_id;
+    if (!customerId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+
+    const courses = await Course.listActive();
+    const accessRows = await CustomerCourseAccess.listByCustomer(customerId);
+    const byCourseId = new Map(accessRows.map(r => [Number(r.course_id), r]));
+
+    const now = new Date();
+    const enriched = courses.map((c) => {
+      const access = byCourseId.get(Number(c.id));
+      const isRegistered = !!(
+        access &&
+        access.status === 'active' &&
+        (!access.expires_at || new Date(access.expires_at) > now)
+      );
+      return { ...sanitizeCourse(c), is_registered: isRegistered };
+    });
+
+    return res.json({
+      success: true,
+      message: 'Courses retrieved successfully',
+      data: enriched
+    });
+  } catch (err) {
+    logger.error('Academy.listMyCourses error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load courses', code: 'SERVER_ERROR' });
+  }
+};
+
 // Developer-only: create a course in the catalog
 exports.createCourse = async (req, res) => {
   try {
