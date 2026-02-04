@@ -217,17 +217,77 @@ if (pdfDoc.getPageCount() > 6) {
   return Buffer.from(out);
 };
 
-exports.certificate = async (investorName = '') => {
+exports.certificate = async (investorName = '', options = {}) => {
+  let pdfDoc;
+  let page;
+  let scriptFont;
+  
+  // Use university certificate template if provided (PDF file)
+  if (options.certificateFileUrl) {
+    try {
+      const https = require('https');
+      const http = require('http');
+      
+      const certUrl = new URL(options.certificateFileUrl);
+      const client = certUrl.protocol === 'https:' ? https : http;
+      
+      const pdfBytes = await new Promise((resolve, reject) => {
+        client.get(options.certificateFileUrl, (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+      
+      // Load the university certificate template PDF
+      pdfDoc = await PDFDocument.load(pdfBytes);
+      pdfDoc.registerFontkit(fontkit);
+      
+      // Embed font for name overlay
+      const fontPath = path.join(process.cwd(), 'assets', 'font', 'Italianno-Regular.ttf');
+      const scriptBytes = await fs.readFile(fontPath);
+      scriptFont = await pdfDoc.embedFont(scriptBytes);
+      
+      // Use the first page of the template
+      page = pdfDoc.getPage(0);
+      const { width, height } = page.getSize();
+      
+      const nameY = height - 238; // Adjust Y position as needed
+      const maxNameWidth = 700;
+      let size = 65;
+      const color = rgb(0.15, 0.15, 0.15);
+      
+      if (investorName && investorName.trim()) {
+        let w = scriptFont.widthOfTextAtSize(investorName, size);
+        if (w > maxNameWidth) {
+          size = Math.max(28, Math.floor((maxNameWidth / w) * size));
+          w = scriptFont.widthOfTextAtSize(investorName, size);
+        }
+        const x = (width - w) / 2;
+        page.drawText(investorName, { x, y: nameY, size, font: scriptFont, color });
+      }
+      
+      // Return early if using template
+      const out = await pdfDoc.save();
+      return Buffer.from(out);
+    } catch (certError) {
+      console.warn('Failed to load university certificate template, using default:', certError.message);
+      // Fall through to default certificate
+    }
+  }
+  
+  // Default certificate template
   const masterPath = path.join(process.cwd(), 'assets', 'Completion.pdf');
   const masterBytes = await fs.readFile(masterPath);
-  const pdfDoc = await PDFDocument.load(masterBytes);
+  pdfDoc = await PDFDocument.load(masterBytes);
   pdfDoc.registerFontkit(fontkit);
 
   const fontPath = path.join(process.cwd(), 'assets', 'font', 'Italianno-Regular.ttf');
   const scriptBytes = await fs.readFile(fontPath);
-  const scriptFont = await pdfDoc.embedFont(scriptBytes); // embed full font
+  scriptFont = await pdfDoc.embedFont(scriptBytes); // embed full font
 
-  const page = pdfDoc.getPage(0);
+  page = pdfDoc.getPage(0);
   const { width, height } = page.getSize();
 
   const nameY = height - 238;
@@ -243,6 +303,50 @@ exports.certificate = async (investorName = '') => {
     }
     const x = (width - w) / 2;
     page.drawText(investorName, { x, y: nameY, size, font: scriptFont, color });
+  }
+  
+  // Fallback: Add university stamp if provided (for backward compatibility)
+  if (options.stampImageUrl) {
+    try {
+      const https = require('https');
+      const http = require('http');
+      
+      const stampUrl = new URL(options.stampImageUrl);
+      const client = stampUrl.protocol === 'https:' ? https : http;
+      
+      const imageBytes = await new Promise((resolve, reject) => {
+        client.get(options.stampImageUrl, (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+      
+      // Embed image (supports PNG, JPEG)
+      let stampImage;
+      if (options.stampImageUrl.toLowerCase().endsWith('.png')) {
+        stampImage = await pdfDoc.embedPng(imageBytes);
+      } else {
+        stampImage = await pdfDoc.embedJpg(imageBytes);
+      }
+      
+      // Position stamp (adjust coordinates as needed)
+      const stampWidth = 120;
+      const stampHeight = (stampImage.height / stampImage.width) * stampWidth;
+      const stampX = width - stampWidth - 100; // Right side with margin
+      const stampY = height - 200; // Adjust Y position as needed
+      
+      page.drawImage(stampImage, {
+        x: stampX,
+        y: stampY,
+        width: stampWidth,
+        height: stampHeight
+      });
+    } catch (stampError) {
+      console.warn('Failed to add university stamp to certificate:', stampError.message);
+      // Continue without stamp if it fails
+    }
   }
 
   const out = await pdfDoc.save();

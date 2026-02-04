@@ -198,7 +198,17 @@ Authenticate user and get access tokens.
       "is_email_verified": 1,
       "is_phone_verified": 0,
       "is_kyc_verified": 0
-    }
+    },
+    "certificate": [
+      {
+        "name": "Achivement",
+        "url": "https://example.com/certificates/achievement.pdf"
+      },
+      {
+        "name": "Compliation",
+        "url": "https://example.com/certificates/completion.pdf"
+      }
+    ]
   }
 }
 ```
@@ -1039,6 +1049,82 @@ Get statistics about user roles.
 ---
 
 ## Course Access
+
+### Direct Course Access Payment (Without Access Code)
+**POST** `/api/course-access/direct-payment` 🔒
+
+Create a payment session for direct course access without requiring an access code. The payment amount is fixed at $2000 USD.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Request Body:** None (customer ID is taken from the access token)
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "code": "PAYMENT_SESSION_CREATED",
+  "message": "Payment session created. Please complete payment of 2000 USD to activate course access.",
+  "payment_required": true,
+  "payment_details": {
+    "payment_id": 12345,
+    "payment_reference": "DIRECT-100079-1234567890",
+    "status": "pending",
+    "amount": 2000,
+    "currency": "USD",
+    "checkout_url": "https://checkout.stripe.com/c/pay/cs_test_...",
+    "stripe_session_id": "cs_test_...",
+    "stripe_checkout_url": "https://checkout.stripe.com/c/pay/cs_test_..."
+  },
+  "customer_info": {
+    "customer_id": 100079,
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john@example.com"
+  },
+  "instructions": "Please complete the payment to activate your course access."
+}
+```
+
+**Error Responses:**
+
+- **400 - Already Has Access:**
+```json
+{
+  "success": false,
+  "code": "ALREADY_HAS_ACCESS",
+  "message": "You already have active course access."
+}
+```
+
+- **401 - Unauthorized:**
+```json
+{
+  "success": false,
+  "code": "UNAUTHORIZED",
+  "message": "Unauthorized: missing user in token."
+}
+```
+
+- **500 - Payment Gateway Error:**
+```json
+{
+  "success": false,
+  "code": "PAYMENT_GATEWAY_ERROR",
+  "message": "Failed to create payment session. Please try again.",
+  "details": "Error details..."
+}
+```
+
+**Notes:**
+- Payment amount is fixed at $2000 USD
+- After successful payment, course access is automatically granted via webhook
+- The webhook callback processes the payment and grants access to the self-study course
+- If customer already has active course access, the endpoint returns an error
+- Payment status can be verified using the payment_id returned in the response
 
 ### Register for Course Access
 **POST** `/api/course-access/register` 🔒

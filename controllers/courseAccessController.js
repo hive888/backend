@@ -11,6 +11,8 @@ const Subsection = require('../models/subsectionModel');
 const CustomerProgress = require('../models/customerProgressModel');
 const { CoursePaymentService } = require('../config/coursePaymentService');
 const PaymentTracking = require('../models/paymentTrackingModel');
+const ExitExamPayment = require('../models/ExitExamPayment');
+const University = require('../models/University');
 
 // NOTE: This model writes to customer_section_quiz_status but we treat `section_id` as *subsection_id*
 const SubsectionQuizStatus = require('../models/sectionQuizStatusModel');
@@ -265,8 +267,8 @@ exports.checkCourseAccessFromToken = async (req, res) => {
       const paymentReference = `AC-${lockedCode.id}-${customer.customer_id}-${Date.now()}`;
       
       // Generate payment URLs
-      const successUrl = `${process.env.FRONTEND_URL || 'https://your-frontend.com'}/course-payment/success`;
-      const cancelUrl = `${process.env.FRONTEND_URL || 'https://your-frontend.com'}/course-payment/cancel`;
+      const successUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app/education/self-study'}`;
+      const cancelUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app'}`;
       
       try {
         // Create Stripe checkout session using NEW CoursePaymentService
@@ -873,11 +875,79 @@ exports.completeSubsection = async (req, res) => {
     // Get next subsection ID
     const next_subsection_id = subsectionId === 259 ? null : await Subsection.getNextIdInSection(subsectionId);
     
-    return res.status(200).json({ 
+    // 👇 CHECK IF NEXT SUBSECTION IS FINAL QUIZ (259) AND EXIT EXAM PAYMENT IS REQUIRED
+    let exit_exam_payment_info = null;
+    if (next_subsection_id === 259) {
+      const reg = await ensureSelfStudyRegistration(conn, customer.customer_id);
+      if (reg && reg.access_code_id) {
+        const accessCode = await AccessCode.getById(reg.access_code_id);
+        
+        if (accessCode && parseFloat(accessCode.exit_exam_fee || 0) > 0) {
+          // Check if exit exam payment has been completed
+          let exitExamPayment = await ExitExamPayment.hasCompletedPayment(customer.customer_id, reg.access_code_id);
+          
+          // Also check payment tracking for completed exit exam payments
+          if (!exitExamPayment) {
+            const PaymentTracking = require('../models/paymentTrackingModel');
+            const paymentTracking = await PaymentTracking.getByCustomerAndAccessCode(customer.customer_id, reg.access_code_id);
+            
+            // Check if there's a completed exit exam payment in payment tracking
+            if (paymentTracking && 
+                paymentTracking.payment_type === 'exit_exam' && 
+                paymentTracking.payment_status === 'completed') {
+              // Double-check exit exam payment table
+              const allPayments = await ExitExamPayment.getAll({
+                customer_id: customer.customer_id,
+                access_code_id: reg.access_code_id,
+                page: 1,
+                limit: 10
+              });
+              
+              // Find any completed payment
+              exitExamPayment = allPayments.payments?.find(p => p.payment_status === 'completed');
+            }
+          }
+          
+          if (!exitExamPayment) {
+            // Payment required - include payment info in response
+            exit_exam_payment_info = {
+              payment_required: true,
+              exit_exam_fee: parseFloat(accessCode.exit_exam_fee),
+              currency: accessCode.payment_currency || 'USD',
+              access_code_id: reg.access_code_id,
+              subsectionId:259,
+              message: 'Exit exam payment required to proceed to final quiz'
+            };
+          } else {
+            exit_exam_payment_info = {
+              payment_required: false,
+              payment_status: 'completed',
+              message: 'Exit exam payment completed. You can proceed to the final quiz.'
+            };
+          }
+        } else {
+          // Exit exam is free (fee = 0 or not set)
+          exit_exam_payment_info = {
+            payment_required: false,
+            exit_exam_fee: 0,
+            message: 'Exit exam is free. You can proceed to the final quiz.'
+          };
+        }
+      }
+    }
+    
+    const response = { 
       success: true, 
       message: 'Subsection marked as completed.',
       next_subsection_id
-    });
+    };
+    
+    // Add exit exam payment info if next is final quiz
+    if (exit_exam_payment_info) {
+      response.exit_exam_payment_info = exit_exam_payment_info;
+    }
+    
+    return res.status(200).json(response);
 
   } catch (err) {
     logger.error('completeSubsection error:', err);
@@ -911,6 +981,210 @@ exports.getSubsectionQuizInfo = async (req, res) => {
     if (!ss) return res.status(404).json({ success:false, code:'SUBSECTION_NOT_FOUND', message:'Subsection not found.' });
     if (Number(ss.quiz_required) !== 1) {
       return res.status(400).json({ success:false, code:'QUIZ_NOT_REQUIRED', message:'Quiz is not required for this subsection.' });
+    }
+
+    // 👇 EXIT EXAM PAYMENT CHECK FOR FINAL QUIZ (subsection 259)
+    if (subsectionId === 259) {
+      // Get registration to find access code
+      const registration = await SelfStudyRegistration.findByCustomer(conn, customerId);
+      if (registration && registration.access_code_id) {
+        const accessCode = await AccessCode.getById(registration.access_code_id);
+        
+        if (accessCode && parseFloat(accessCode.exit_exam_fee || 0) > 0) {
+          // Check if exit exam payment has been completed
+          let exitExamPayment = await ExitExamPayment.hasCompletedPayment(customerId, registration.access_code_id);
+          
+          // Also check payment tracking for completed exit exam payments
+          if (!exitExamPayment) {
+            const PaymentTracking = require('../models/paymentTrackingModel');
+            const paymentTracking = await PaymentTracking.getByCustomerAndAccessCode(customerId, registration.access_code_id);
+            
+            // Check if there's a completed exit exam payment in payment tracking
+            if (paymentTracking && 
+                paymentTracking.payment_type === 'exit_exam' && 
+                paymentTracking.payment_status === 'completed') {
+              // Double-check exit exam payment table
+              const allPayments = await ExitExamPayment.getAll({
+                customer_id: customerId,
+                access_code_id: registration.access_code_id,
+                page: 1,
+                limit: 10
+              });
+              
+              // Find any completed payment
+              exitExamPayment = allPayments.payments?.find(p => p.payment_status === 'completed');
+              
+              // If still not found but payment tracking says completed, manually update exit exam payment
+              if (!exitExamPayment && paymentTracking.payment_details) {
+                try {
+                  const details = typeof paymentTracking.payment_details === 'string' 
+                    ? JSON.parse(paymentTracking.payment_details) 
+                    : paymentTracking.payment_details;
+                  
+                  if (details.exit_exam_payment_id) {
+                    const exitPayment = await ExitExamPayment.findById(details.exit_exam_payment_id);
+                    if (exitPayment && exitPayment.payment_status !== 'completed') {
+                      // Update exit exam payment to match payment tracking
+                      await ExitExamPayment.updateStatus(
+                        conn,
+                        exitPayment.id,
+                        'completed',
+                        paymentTracking.transaction_id,
+                        paymentTracking.payment_date ? new Date(paymentTracking.payment_date) : new Date(),
+                        { synced_from_payment_tracking: true }
+                      );
+                      exitExamPayment = { ...exitPayment, payment_status: 'completed' };
+                      logger.info('Synced exit exam payment status from payment tracking', {
+                        exitExamPaymentId: exitPayment.id,
+                        paymentTrackingId: paymentTracking.id
+                      });
+                    } else if (exitPayment && exitPayment.payment_status === 'completed') {
+                      exitExamPayment = exitPayment;
+                    }
+                  }
+                } catch (parseErr) {
+                  logger.warn('Failed to parse payment_details for sync:', parseErr);
+                }
+              }
+            }
+          }
+          
+          if (!exitExamPayment) {
+            // Payment required - generate checkout URL automatically
+            try {
+              const customer = await Customer.findById(customerId);
+              if (!customer) {
+                throw new Error('Customer not found');
+              }
+
+              // Check for pending payment first
+              const pendingPayment = await ExitExamPayment.findByCustomerAndAccessCode(customerId, registration.access_code_id);
+              let checkoutUrl = null;
+              let sessionId = null;
+
+              if (pendingPayment && pendingPayment.payment_status === 'pending' && pendingPayment.transaction_id) {
+                // Use existing Stripe session
+                const stripe = require('../config/coursePaymentService').stripe;
+                try {
+                  const session = await stripe.checkout.sessions.retrieve(pendingPayment.transaction_id);
+                  checkoutUrl = session.url;
+                  sessionId = session.id;
+                } catch (stripeErr) {
+                  logger.warn('Failed to retrieve existing Stripe session, creating new one:', stripeErr);
+                }
+              }
+
+              // Create new payment session if no existing one
+              if (!checkoutUrl) {
+                const exitExamFee = parseFloat(accessCode.exit_exam_fee);
+                const paymentReference = `EXIT_EXAM_${Date.now()}_${customerId}`;
+                const customerInfo = {
+                  customer_id: customer.customer_id,
+                  email: customer.email,
+                  first_name: customer.first_name,
+                  last_name: customer.last_name
+                };
+                const accessCodeInfo = {
+                  access_code_id: accessCode.id,
+                  code: accessCode.code,
+                  access_code: accessCode.code,
+                  exit_exam_fee: exitExamFee,
+                  payment_type: 'exit_exam'
+                };
+                const successUrl = 'https://hive-888-dashboard.vercel.app/education/self-study/259/quiz/play/mcq';
+                const cancelUrl = `${process.env.FRONTENDHIVE_URL || process.env.FRONTEND_URL}${process.env.CANCEL_CALLBACK_URL || '/payment/cancel'}`;
+
+                // Create payment record if doesn't exist
+                let paymentId = pendingPayment?.id;
+                if (!paymentId) {
+                  paymentId = await ExitExamPayment.create(conn, {
+                    customer_id: customerId,
+                    access_code_id: registration.access_code_id,
+                    registration_id: registration.id,
+                    amount: exitExamFee,
+                    currency: accessCode.payment_currency || 'USD',
+                    payment_status: 'pending'
+                  });
+                }
+
+                // Create Stripe checkout session
+                const { CoursePaymentService } = require('../config/coursePaymentService');
+                const session = await CoursePaymentService.createCourseAccessCheckoutSession(
+                  exitExamFee,
+                  accessCode.payment_currency || 'USD',
+                  paymentReference,
+                  customerInfo,
+                  accessCodeInfo,
+                  successUrl,
+                  cancelUrl
+                );
+
+                checkoutUrl = session.url;
+                sessionId = session.id;
+
+                // Update payment record with session ID
+                await ExitExamPayment.updateStatus(
+                  conn,
+                  paymentId,
+                  'processing',
+                  session.id,
+                  null,
+                  { stripe_session_id: session.id, payment_reference: paymentReference }
+                );
+
+                // Create payment tracking record for webhook
+                const PaymentTracking = require('../models/paymentTrackingModel');
+                await PaymentTracking.create(conn, {
+                  customer_id: customerId,
+                  access_code_id: registration.access_code_id,
+                  amount: exitExamFee,
+                  currency: accessCode.payment_currency || 'USD',
+                  payment_type: 'exit_exam',
+                  payment_status: 'pending',
+                  transaction_id: session.id,
+                  payment_reference: paymentReference,
+                  payment_details: {
+                    exit_exam_payment_id: paymentId,
+                    registration_id: registration.id
+                  }
+                });
+              }
+
+              // Return payment required error with checkout URL
+              return res.status(402).json({
+                success: false,
+                code: 'EXIT_EXAM_PAYMENT_REQUIRED',
+                message: 'Exit exam payment required to access final quiz',
+                data: {
+                  exit_exam_fee: parseFloat(accessCode.exit_exam_fee),
+                  currency: accessCode.payment_currency || 'USD',
+                  access_code_id: registration.access_code_id,
+                  subsectionId: 259,
+                  payment_required: true,
+                  checkout_url: checkoutUrl,
+                  session_id: sessionId
+                }
+              });
+            } catch (paymentErr) {
+              logger.error('Failed to create exit exam payment session:', paymentErr);
+              // Fallback to error without checkout URL
+              return res.status(402).json({
+                success: false,
+                code: 'EXIT_EXAM_PAYMENT_REQUIRED',
+                message: 'Exit exam payment required to access final quiz',
+                data: {
+                  exit_exam_fee: parseFloat(accessCode.exit_exam_fee),
+                  currency: accessCode.payment_currency || 'USD',
+                  access_code_id: registration.access_code_id,
+                  subsectionId: 259,
+                  payment_required: true,
+                  error: 'Failed to generate payment link. Please try again.'
+                }
+              });
+            }
+          }
+        }
+      }
     }
 
     // subsection-level status (via your existing table)
@@ -1003,6 +1277,199 @@ exports.submitSubsectionQuiz = async (req, res) => {
       return res.status(400).json({ success:false, code:'QUIZ_NOT_REQUIRED', message:'Quiz is not required for this subsection.' });
     }
 
+    // 👇 EXIT EXAM PAYMENT CHECK FOR FINAL QUIZ (subsection 259)
+    if (subsectionId === 259 && reg.access_code_id) {
+      const accessCode = await AccessCode.getById(reg.access_code_id);
+      
+      if (accessCode && parseFloat(accessCode.exit_exam_fee || 0) > 0) {
+        // Check if exit exam payment has been completed
+        let exitExamPayment = await ExitExamPayment.hasCompletedPayment(customerId, reg.access_code_id);
+        
+        // Also check payment tracking for completed exit exam payments
+        if (!exitExamPayment) {
+          const PaymentTracking = require('../models/paymentTrackingModel');
+          const paymentTracking = await PaymentTracking.getByCustomerAndAccessCode(customerId, reg.access_code_id);
+          
+          // Check if there's a completed exit exam payment in payment tracking
+          if (paymentTracking && 
+              paymentTracking.payment_type === 'exit_exam' && 
+              paymentTracking.payment_status === 'completed') {
+            // Double-check exit exam payment table
+            const allPayments = await ExitExamPayment.getAll({
+              customer_id: customerId,
+              access_code_id: reg.access_code_id,
+              page: 1,
+              limit: 10
+            });
+            
+            // Find any completed payment
+            exitExamPayment = allPayments.payments?.find(p => p.payment_status === 'completed');
+            
+            // If still not found but payment tracking says completed, manually update exit exam payment
+            if (!exitExamPayment && paymentTracking.payment_details) {
+              try {
+                const details = typeof paymentTracking.payment_details === 'string' 
+                  ? JSON.parse(paymentTracking.payment_details) 
+                  : paymentTracking.payment_details;
+                
+                if (details.exit_exam_payment_id) {
+                  const exitPayment = await ExitExamPayment.findById(details.exit_exam_payment_id);
+                  if (exitPayment && exitPayment.payment_status !== 'completed') {
+                    // Update exit exam payment to match payment tracking
+                    await ExitExamPayment.updateStatus(
+                      conn,
+                      exitPayment.id,
+                      'completed',
+                      paymentTracking.transaction_id,
+                      paymentTracking.payment_date ? new Date(paymentTracking.payment_date) : new Date(),
+                      { synced_from_payment_tracking: true }
+                    );
+                    exitExamPayment = { ...exitPayment, payment_status: 'completed' };
+                    logger.info('Synced exit exam payment status from payment tracking', {
+                      exitExamPaymentId: exitPayment.id,
+                      paymentTrackingId: paymentTracking.id
+                    });
+                  } else if (exitPayment && exitPayment.payment_status === 'completed') {
+                    exitExamPayment = exitPayment;
+                  }
+                }
+              } catch (parseErr) {
+                logger.warn('Failed to parse payment_details for sync:', parseErr);
+              }
+            }
+          }
+        }
+        
+        if (!exitExamPayment) {
+          // Payment required - generate checkout URL automatically
+          try {
+            const exitExamFee = parseFloat(accessCode.exit_exam_fee);
+            const paymentReference = `EXIT_EXAM_${Date.now()}_${customerId}`;
+            const customerInfo = {
+              customer_id: customer.customer_id,
+              email: customer.email,
+              first_name: customer.first_name,
+              last_name: customer.last_name
+            };
+            const accessCodeInfo = {
+              access_code_id: accessCode.id,
+              code: accessCode.code,
+              access_code: accessCode.code,
+              exit_exam_fee: exitExamFee,
+              payment_type: 'exit_exam'
+            };
+            const successUrl = 'https://hive-888-dashboard.vercel.app/education/self-study/259/quiz/play/mcq';
+            const cancelUrl = `${process.env.FRONTENDHIVE_URL || process.env.FRONTEND_URL}${process.env.CANCEL_CALLBACK_URL || '/payment/cancel'}`;
+
+            // Check for pending payment first
+            const pendingPayment = await ExitExamPayment.findByCustomerAndAccessCode(customerId, reg.access_code_id);
+            let checkoutUrl = null;
+            let sessionId = null;
+
+            if (pendingPayment && pendingPayment.payment_status === 'pending' && pendingPayment.transaction_id) {
+              // Use existing Stripe session
+              const stripe = require('../config/coursePaymentService').stripe;
+              try {
+                const session = await stripe.checkout.sessions.retrieve(pendingPayment.transaction_id);
+                checkoutUrl = session.url;
+                sessionId = session.id;
+              } catch (stripeErr) {
+                logger.warn('Failed to retrieve existing Stripe session, creating new one:', stripeErr);
+              }
+            }
+
+            // Create new payment session if no existing one
+            if (!checkoutUrl) {
+              // Create payment record if doesn't exist
+              let paymentId = pendingPayment?.id;
+              if (!paymentId) {
+                paymentId = await ExitExamPayment.create(conn, {
+                  customer_id: customerId,
+                  access_code_id: reg.access_code_id,
+                  registration_id: reg.id,
+                  amount: exitExamFee,
+                  currency: accessCode.payment_currency || 'USD',
+                  payment_status: 'pending'
+                });
+              }
+
+              // Create Stripe checkout session
+              const { CoursePaymentService } = require('../config/coursePaymentService');
+              const session = await CoursePaymentService.createCourseAccessCheckoutSession(
+                exitExamFee,
+                accessCode.payment_currency || 'USD',
+                paymentReference,
+                customerInfo,
+                accessCodeInfo,
+                successUrl,
+                cancelUrl
+              );
+
+              checkoutUrl = session.url;
+              sessionId = session.id;
+
+              // Update payment record with session ID
+              await ExitExamPayment.updateStatus(
+                conn,
+                paymentId,
+                'processing',
+                session.id,
+                null,
+                { stripe_session_id: session.id, payment_reference: paymentReference }
+              );
+
+              // Create payment tracking record for webhook
+              const PaymentTracking = require('../models/paymentTrackingModel');
+              await PaymentTracking.create(conn, {
+                customer_id: customerId,
+                access_code_id: reg.access_code_id,
+                amount: exitExamFee,
+                currency: accessCode.payment_currency || 'USD',
+                payment_type: 'exit_exam',
+                payment_status: 'pending',
+                transaction_id: session.id,
+                payment_reference: paymentReference,
+                payment_details: {
+                  exit_exam_payment_id: paymentId,
+                  registration_id: reg.id
+                }
+              });
+            }
+
+            return res.status(402).json({
+              success: false,
+              code: 'EXIT_EXAM_PAYMENT_REQUIRED',
+              message: 'Exit exam payment required to submit final quiz',
+              data: {
+                exit_exam_fee: parseFloat(accessCode.exit_exam_fee),
+                currency: accessCode.payment_currency || 'USD',
+                access_code_id: reg.access_code_id,
+                subsectionId: 259,
+                payment_required: true,
+                checkout_url: checkoutUrl,
+                session_id: sessionId
+              }
+            });
+          } catch (paymentErr) {
+            logger.error('Failed to create exit exam payment session:', paymentErr);
+            return res.status(402).json({
+              success: false,
+              code: 'EXIT_EXAM_PAYMENT_REQUIRED',
+              message: 'Exit exam payment required to submit final quiz',
+              data: {
+                exit_exam_fee: parseFloat(accessCode.exit_exam_fee),
+                currency: accessCode.payment_currency || 'USD',
+                access_code_id: reg.access_code_id,
+                subsectionId: 259,
+                payment_required: true,
+                error: 'Failed to generate payment link. Please try again.'
+              }
+            });
+          }
+        }
+      }
+    }
+
     const required = ss.quiz_pass_score || 0;
 
     // Preferred: grade server-side from answers
@@ -1029,11 +1496,49 @@ exports.submitSubsectionQuiz = async (req, res) => {
     }
 
     // next subsection in the same section
+    let next_subsection_id;
     if (subsectionId === 259) {
-  next_subsection_id = null;
-} else {
-  next_subsection_id = await Subsection.getNextIdInSection(subsectionId);
-}
+      next_subsection_id = null;
+    } else {
+      next_subsection_id = await Subsection.getNextIdInSection(subsectionId);
+    }
+    
+    // 👇 CHECK IF NEXT SUBSECTION IS FINAL QUIZ (259) AND EXIT EXAM PAYMENT IS REQUIRED
+    let exit_exam_payment_info = null;
+    if (pass && next_subsection_id === 259) {
+      if (reg && reg.access_code_id) {
+        const accessCode = await AccessCode.getById(reg.access_code_id);
+        
+        if (accessCode && parseFloat(accessCode.exit_exam_fee || 0) > 0) {
+          // Check if exit exam payment has been completed
+          const exitExamPayment = await ExitExamPayment.hasCompletedPayment(customer.customer_id, reg.access_code_id);
+          
+          if (!exitExamPayment) {
+            // Payment required - include payment info in response
+            exit_exam_payment_info = {
+              payment_required: true,
+              exit_exam_fee: parseFloat(accessCode.exit_exam_fee),
+              currency: accessCode.payment_currency || 'USD',
+              access_code_id: reg.access_code_id,
+              message: 'Exit exam payment required to proceed to final quiz'
+            };
+          } else {
+            exit_exam_payment_info = {
+              payment_required: false,
+              payment_status: 'completed',
+              message: 'Exit exam payment completed. You can proceed to the final quiz.'
+            };
+          }
+        } else {
+          // Exit exam is free (fee = 0 or not set)
+          exit_exam_payment_info = {
+            payment_required: false,
+            exit_exam_fee: 0,
+            message: 'Exit exam is free. You can proceed to the final quiz.'
+          };
+        }
+      }
+    }
 
     // --- NEW: return progress for this section ---
     // grab all subsections in the same section, then count completed
@@ -1058,11 +1563,52 @@ exports.submitSubsectionQuiz = async (req, res) => {
         // Prepare certificate data - adjust these fields based on your certificate template
         const investorName = String(`${customer.first_name || ''} ${customer.last_name || ''}`.trim());
         
+        // Get access code to check for university certificate template
+        // Determine certificate type based on quiz score
+        // Achievement certificate: score >= 90%
+        // Completion certificate: score >= pass_score (typically 70%)
+        const ACHIEVEMENT_THRESHOLD = 90; // Score threshold for achievement certificate
+        const isAchievement = finalScore >= ACHIEVEMENT_THRESHOLD;
+        
+        let certificateFileUrl = null;
+        let stampImageUrl = null; // Keep for backward compatibility
+        let certificateType = 'default';
+        
+        if (reg.access_code_id) {
+          const accessCode = await AccessCode.getById(reg.access_code_id);
+          if (accessCode && accessCode.university_id) {
+            const University = require('../models/University');
+            const university = await University.findById(accessCode.university_id);
+            if (university) {
+              // Use achievement certificate if score is high enough and it exists
+              if (isAchievement && university.achievement_certificate_file_url) {
+                certificateFileUrl = university.achievement_certificate_file_url;
+                certificateType = 'achievement';
+              } 
+              // Otherwise use completion certificate
+              else if (university.certificate_file_url) {
+                certificateFileUrl = university.certificate_file_url;
+                certificateType = 'completion';
+              } 
+              // Fallback to stamp image for backward compatibility
+              else if (university.stamp_image_url) {
+                stampImageUrl = university.stamp_image_url;
+                certificateType = 'stamp';
+              }
+            }
+          }
+        }
+        
         logger.info('Certificate generation for:', {
           customerId: customer.customer_id,
           investorName: investorName,
           firstName: customer.first_name,
-          lastName: customer.last_name
+          lastName: customer.last_name,
+          finalScore: finalScore,
+          isAchievement: isAchievement,
+          certificateType: certificateType,
+          certificateFileUrl: certificateFileUrl || 'none',
+          stampImageUrl: stampImageUrl || 'none'
         });
 
         // 👇 VALIDATE NAME
@@ -1070,8 +1616,11 @@ exports.submitSubsectionQuiz = async (req, res) => {
           throw new Error('Investor name is required for certificate');
         }
 
-        // 👇 CALL WITH JUST FULL NAME (already a string)
-        const buffer = await certificate(investorName);
+        // 👇 CALL WITH FULL NAME AND CERTIFICATE/STAMP OPTIONS
+        const buffer = await certificate(investorName, {
+          certificateFileUrl: certificateFileUrl,
+          stampImageUrl: stampImageUrl // Fallback for backward compatibility
+        });
 
         const fakeFile = {
           buffer,
@@ -1118,6 +1667,11 @@ exports.submitSubsectionQuiz = async (req, res) => {
       required,
       next_subsection_id
     };
+
+    // 👇 ADD EXIT EXAM PAYMENT INFO IF NEXT IS FINAL QUIZ
+    if (exit_exam_payment_info) {
+      response.exit_exam_payment_info = exit_exam_payment_info;
+    }
 
     // 👇 ADD CERTIFICATE URL TO RESPONSE IF AVAILABLE
     if (certificateUrl) {
@@ -1277,6 +1831,211 @@ exports.getSubsectionQuizAdminView = async (req, res) => {
   } catch (err) {
     logger.error('getSubsectionQuizAdminView error:', err);
     return res.status(500).json({ success:false, code:'SERVER_ERROR', message:'Internal server error.' });
+  } finally {
+    conn.release();
+  }
+};
+
+/**
+ * POST /api/course-access/direct-payment
+ * Create a direct course access payment ($2000 USD) without access code
+ * Auth: Bearer <JWT> (req.user.customer_id)
+ */
+exports.createDirectCourseAccessPayment = async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const customerId = req.user?.customer_id;
+    const amount = 90.00; // Fixed amount: $2000 USD
+    const currency = 'USD';
+
+    if (!customerId) {
+      return res.status(401).json({ 
+        success: false, 
+        code: 'UNAUTHORIZED', 
+        message: 'Unauthorized: missing user in token.' 
+      });
+    }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({ 
+        success: false, 
+        code: 'CUSTOMER_NOT_FOUND', 
+        message: 'Customer not found.' 
+      });
+    }
+
+    await conn.beginTransaction();
+
+    // Check if customer already has active course access
+    const selfStudyCourse = await getSelfStudyCourse();
+    if (selfStudyCourse) {
+      const [existingAccess] = await conn.query(
+        `SELECT status, expires_at 
+         FROM customer_course_access 
+         WHERE customer_id = ? AND course_id = ? AND status = 'active'
+         LIMIT 1`,
+        [customerId, selfStudyCourse.id]
+      );
+      
+      if (existingAccess.length > 0 && (!existingAccess[0].expires_at || new Date(existingAccess[0].expires_at) > new Date())) {
+        await conn.rollback();
+        return res.status(400).json({
+          success: false,
+          code: 'ALREADY_HAS_ACCESS',
+          message: 'You already have active course access.'
+        });
+      }
+    }
+
+    // IMPORTANT: payment_tracking.access_code_id is NOT NULL + FK'd.
+    // Use a dedicated system access code for "direct purchase" flows.
+    const systemCode = await AccessCode.ensureSystemDirectPurchaseCode(conn, {
+      course_id: selfStudyCourse?.id ?? null,
+      code: 'DIRECT2000USD',
+      payment_amount: amount,
+      payment_currency: currency
+    });
+    if (!systemCode?.id) {
+      await conn.rollback();
+      return res.status(500).json({
+        success: false,
+        code: 'SYSTEM_CODE_ERROR',
+        message: 'Failed to initialize system direct purchase code.'
+      });
+    }
+
+    // Check for existing pending payment
+    const [existingPayments] = await conn.query(
+      `SELECT id, payment_status, transaction_id 
+       FROM payment_tracking 
+       WHERE customer_id = ? AND access_code_id = ? AND payment_status IN ('pending', 'processing')
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [customerId, systemCode.id]
+    );
+
+    let paymentId;
+    let paymentStatus = 'pending';
+
+    if (existingPayments.length > 0 && existingPayments[0].payment_status === 'pending' && !existingPayments[0].transaction_id) {
+      // Reuse existing pending payment
+      paymentId = existingPayments[0].id;
+      paymentStatus = 'pending';
+    } else {
+      // Create new payment record
+      paymentId = await PaymentTracking.create(conn, {
+        customer_id: customerId,
+        access_code_id: systemCode.id, // system direct-purchase code
+        amount: amount,
+        currency: currency,
+        payment_method: 'stripe',
+        payment_status: 'pending',
+        payment_details: {
+          description: 'Direct Course Access Payment',
+          payment_type: 'direct_course_access',
+          system_access_code: systemCode.code,
+          customer_email: customer.email,
+          customer_name: `${customer.first_name} ${customer.last_name}`.trim()
+        }
+      });
+      paymentStatus = 'pending';
+    }
+
+    await conn.commit();
+
+    // Generate unique payment reference ID
+    const paymentReference = `DIRECT-${customerId}-${Date.now()}`;
+
+    // Generate payment URLs
+    const successUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app'}/payment/success`;
+    const cancelUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app'}/payment/cancel`;
+
+    try {
+      // Create Stripe checkout session (we still send a system access_code_id to satisfy webhook + DB constraints)
+      const paymentResult = await CoursePaymentService.createCourseAccessCheckoutSession(
+        amount,
+        currency,
+        paymentReference,
+        {
+          customer_id: customer.customer_id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          email: customer.email
+        },
+        {
+          access_code_id: systemCode.id,
+          access_code: systemCode.code,
+          university_name: null,
+          // keep payment type distinct for downstream reporting
+          payment_type: 'direct_course_access'
+        },
+        successUrl,
+        cancelUrl
+      );
+
+      // Update payment record with Stripe session ID
+      const updateConn = await db.getConnection();
+      try {
+        await PaymentTracking.updateStatus(
+          updateConn,
+          paymentId,
+          'pending',
+          paymentResult.sessionId,
+          null,
+          {
+            stripe_session_id: paymentResult.sessionId,
+            payment_reference: paymentReference,
+            checkout_url: paymentResult.url,
+            stripe_checkout_url: paymentResult.url,
+            payment_type: 'direct_course_access'
+          }
+        );
+      } finally {
+        updateConn.release();
+      }
+
+      return res.status(200).json({
+        success: true,
+        code: 'PAYMENT_SESSION_CREATED',
+        message: `Payment session created. Please complete payment of ${amount} ${currency} to activate course access.`,
+        payment_required: true,
+        payment_details: {
+          payment_id: paymentId,
+          payment_reference: paymentReference,
+          status: paymentStatus,
+          amount: amount,
+          currency: currency,
+          checkout_url: paymentResult.url
+        },
+        customer_info: {
+          customer_id: customer.customer_id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          email: customer.email
+        },
+        instructions: 'Please complete the payment to activate your course access.'
+      });
+
+    } catch (paymentError) {
+      logger.error('Direct course payment session creation failed:', paymentError);
+
+      return res.status(500).json({
+        success: false,
+        code: 'PAYMENT_GATEWAY_ERROR',
+        message: 'Failed to create payment session. Please try again.',
+        details: paymentError.message
+      });
+    }
+
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    logger.error('createDirectCourseAccessPayment error:', err);
+    return res.status(500).json({ 
+      success: false, 
+      code: 'SERVER_ERROR', 
+      message: 'Internal server error.' 
+    });
   } finally {
     conn.release();
   }

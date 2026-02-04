@@ -3,12 +3,66 @@ const express = require('express');
 const router = express.Router();
 const reservationController = require('../controllers/reservationController');
 const logger = require('../utils/logger');
+const { sendCourseRegistrationWelcomeEmail } = require('../utils/email');
 
 // Stripe signature verification (recommended for production)
 const { stripe } = require('../config/coursePaymentService');
 
 // ADD THIS LINE
 const coursePaymentController = require('../controllers/coursePaymentWebhookController');
+
+// Test welcome email endpoint (GET or POST)
+router.get('/test-welcome-email', async (req, res) => {
+  try {
+    // Static values for testing
+    const email = 'mpho@ietsa.org.za';
+    const firstName = 'User';
+
+    await sendCourseRegistrationWelcomeEmail(email, firstName);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Test welcome email sent successfully',
+      data: {
+        email,
+        firstName
+      }
+    });
+  } catch (error) {
+    logger.error('Test welcome email error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to send test welcome email',
+      message: error.message
+    });
+  }
+});
+
+router.post('/test-welcome-email', async (req, res) => {
+  try {
+    // Static values for testing
+    const email = 'test@hive888.org';
+    const firstName = 'Test User';
+
+    await sendCourseRegistrationWelcomeEmail(email, firstName);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Test welcome email sent successfully',
+      data: {
+        email,
+        firstName
+      }
+    });
+  } catch (error) {
+    logger.error('Test welcome email error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to send test welcome email',
+      message: error.message
+    });
+  }
+});
 
 router.post('/stripe-webhook', (req, res, next) => {
   console.log('✅ Extracting payment information from webhook...');

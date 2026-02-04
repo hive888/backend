@@ -31,7 +31,7 @@ function getTransporter() {
   });
 }
 
-function getFromAddress(name = 'PTGR HUB') {
+function getFromAddress(name = 'Hive888') {
   const emailUser = process.env.EMAIL_USER || 'notification@ptgr.org';
   return `"${name}" <${emailUser}>`;
 }
@@ -119,27 +119,27 @@ async function sendTelegramVerificationCode(email, code) {
   <body>
     <div class="container">
       <div class="header">
-        <img src="${logoUrl}" alt="PTGR HUB (HIVE888)" />
+        <img src="${logoUrl}" alt="Hive888" />
         <h1>Telegram Account Linking</h1>
       </div>
       <div class="content">
-        <p>You requested to link your Telegram account to your <b>PTGR HUB (HIVE888)</b> account.</p>
+        <p>You requested to link your Telegram account to your <b>Hive888</b> account.</p>
         <p>Please use the following verification code in your Telegram bot:</p>
         <div class="code-box">${code}</div>
         <p class="small"><strong>This code will expire in 10 minutes.</strong></p>
         <p class="small">If you didn't request this, you can safely ignore this email.</p>
       </div>
       <div class="footer">
-        PTGR HUB (HIVE888) — blockchain-based & Web3-enabled ecosystem connecting education, talent, innovation, and opportunity.
+        Hive888 — An emerging interactive platform that brings together talent, enterprises, and institutions to collaborate within a trusted Web3 ecosystem.
       </div>
     </div>
   </body>
   </html>
   `;
 
-  const textContent = `PTGR HUB (HIVE888) - Telegram Account Linking Verification
+  const textContent = `Hive888 - Telegram Account Linking Verification
 
-You requested to link your Telegram account to your PTGR HUB account.
+You requested to link your Telegram account to your Hive888 account.
 
 Verification Code: ${code}
 
@@ -148,9 +148,9 @@ This code will expire in 10 minutes.
 If you didn't request this, ignore this email.`;
 
   const mailOptions = {
-    from: getFromAddress('PTGR HUB (HIVE888)'),
+    from: getFromAddress('Hive888'),
     to: email,
-    subject: 'PTGR HUB (HIVE888) - Telegram Account Linking Verification',
+    subject: 'Hive888 - Telegram Account Linking Verification',
     html: htmlContent,
     text: textContent
   };

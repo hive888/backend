@@ -42,6 +42,65 @@ function formatMySQLDateTime(value) {
 }
 
 const AccessCode = {
+  /**
+   * Ensure a system access code exists for direct purchase flows.
+   * This is needed because `payment_tracking.access_code_id` is NOT NULL + FK'd.
+   *
+   * @param {object} conn - mysql2 connection (transaction-safe)
+   * @param {object} opts
+   * @param {number|null} opts.course_id - optional course_id to associate
+   * @param {string} [opts.code='DIRECT2000USD']
+   * @param {number} [opts.payment_amount=2000.00]
+   * @param {string} [opts.payment_currency='USD']
+   */
+  async ensureSystemDirectPurchaseCode(conn, opts = {}) {
+    const code = String(opts.code || 'DIRECT2000USD').trim();
+    const course_id = opts.course_id ?? null;
+    const payment_amount = opts.payment_amount ?? 2000.00;
+    const payment_currency = String(opts.payment_currency || 'USD').trim() || 'USD';
+
+    // First try to find it (lock-free)
+    const [rows] = await conn.query(
+      `SELECT * FROM access_codes WHERE UPPER(code) = UPPER(?) LIMIT 1`,
+      [code]
+    );
+    if (rows[0]) return rows[0];
+
+    // Create it (may race; handle duplicate key by re-selecting)
+    try {
+      await conn.query(
+        `INSERT INTO access_codes
+          (code, course_id, payment_amount, payment_currency, label, university_name, total_students, max_uses, used_count, is_active, expires_at, notes, created_by)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 0, 1, NULL, ?, NULL)`,
+        [
+          code,
+          course_id,
+          payment_amount,
+          payment_currency,
+          'Direct Purchase (System)',
+          'System-generated access code used for direct purchase payments (no user-provided code).'
+        ]
+      );
+    } catch (err) {
+      // Duplicate code created concurrently → re-select
+      if (err && (err.code === 'ER_DUP_ENTRY' || err.errno === 1062)) {
+        const [again] = await conn.query(
+          `SELECT * FROM access_codes WHERE UPPER(code) = UPPER(?) LIMIT 1`,
+          [code]
+        );
+        if (again[0]) return again[0];
+      }
+      logger.error('AccessCode.ensureSystemDirectPurchaseCode error:', err);
+      throw err;
+    }
+
+    const [created] = await conn.query(
+      `SELECT * FROM access_codes WHERE UPPER(code) = UPPER(?) LIMIT 1`,
+      [code]
+    );
+    return created[0] || null;
+  },
+
   async findActiveByCode(code) {
     try {
       const trimmed = String(code || '').trim();
@@ -171,22 +230,27 @@ const AccessCode = {
     try {
       const sql = `
         SELECT 
-          id, 
-          code,
-          course_id,
-          university_name,
-          total_students,
-          max_uses,
-          used_count,
-          is_active,
-          created_at,
-          expires_at,
-          notes,
-          created_by,
-          payment_amount,
-          payment_currency
-        FROM access_codes
-        WHERE id = ?
+          ac.id, 
+          ac.code,
+          ac.course_id,
+          ac.university_name,
+          ac.total_students,
+          ac.max_uses,
+          ac.used_count,
+          ac.is_active,
+          ac.created_at,
+          ac.expires_at,
+          ac.notes,
+          ac.created_by,
+          ac.payment_amount,
+          ac.payment_currency,
+          ac.exit_exam_fee,
+          ac.university_id,
+          u.university_name as university_full_name,
+          u.stamp_image_url
+        FROM access_codes ac
+        LEFT JOIN universities u ON ac.university_id = u.university_id
+        WHERE ac.id = ?
       `;
       const [rows] = await db.query(sql, [id]);
       return rows[0] || null;
@@ -197,35 +261,39 @@ const AccessCode = {
   },
 
   async create(data) {
-    const sql = `
-      INSERT INTO access_codes (
-        code,
-        course_id,
-        university_name,
-        total_students,
-        max_uses,
-        is_active,
-        expires_at,
-        notes,
-        created_by,
-        payment_amount,
-        payment_currency
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    
-    const params = [
-      data.code,
-      data.course_id || null,
-      data.university_name || null,
-      data.total_students || null,
-      data.max_uses || null,
-      data.is_active !== undefined ? (data.is_active ? 1 : 0) : 1,
-      formatMySQLDateTime(data.expires_at),
-      data.notes || null,
-      data.created_by || null,
-      data.payment_amount !== undefined ? data.payment_amount : 18.00,
-      data.payment_currency || 'USD'
-    ];
+      const sql = `
+        INSERT INTO access_codes (
+          code,
+          course_id,
+          university_name,
+          total_students,
+          max_uses,
+          is_active,
+          expires_at,
+          notes,
+          created_by,
+          payment_amount,
+          payment_currency,
+          exit_exam_fee,
+          university_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      
+      const params = [
+        data.code,
+        data.course_id || null,
+        data.university_name || null,
+        data.total_students || null,
+        data.max_uses || null,
+        data.is_active !== undefined ? (data.is_active ? 1 : 0) : 1,
+        formatMySQLDateTime(data.expires_at),
+        data.notes || null,
+        data.created_by || null,
+        data.payment_amount !== undefined ? data.payment_amount : 18.00,
+        data.payment_currency || 'USD',
+        data.exit_exam_fee !== undefined ? data.exit_exam_fee : 0.00,
+        data.university_id || null
+      ];
 
     try {
       const [result] = await db.query(sql, params);
@@ -265,7 +333,9 @@ const AccessCode = {
         'expires_at',
         'notes',
         'payment_amount',
-        'payment_currency'
+        'payment_currency',
+        'exit_exam_fee',
+        'university_id'
       ];
       
       const updates = [];

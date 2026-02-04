@@ -168,7 +168,7 @@ class TelegramBotService {
         await this.bot.sendMessage(chatId, 
           `<b>Hey ${customer.first_name || username}, welcome back!</b>\n\n` +
           `You're all set and ready to go!\n` +
-          `You've got full access to our exclusive PTGR HUB community!\n\n` +
+          `You've got full access to our exclusive Hive888 community!\n\n` +
           (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
           `/help - See all commands\n` +
           `/status - Check your account`,
@@ -176,9 +176,8 @@ class TelegramBotService {
         );
       } else {
         await this.bot.sendMessage(chatId,
-          `<b>Welcome to PTGR HUB!</b>\n\n` +
-          `<b>Building Africa's Web3 Future</b>\n\n` +
-          `We're super excited to have you here! Join thousands of professionals building the future of Web3 in Africa.\n\n` +
+          `<b>Welcome to Hive888!</b>\n\n` +
+          `HIVE888 is an emerging interactive platform that brings together talent, enterprises, and institutions to collaborate within a trusted Web3 ecosystem.\n\n` +
           `━━━━━━━━━━━━━━━━\n` +
           `<b>Get Started:</b>\n\n` +
           `/register - Create your account (2 minutes!)\n` +
@@ -271,7 +270,7 @@ class TelegramBotService {
 
       await this.bot.sendMessage(chatId,
         `<b>Great! Let's Link Your Account!</b>\n\n` +
-        `Connect your Telegram to your PTGR HUB account in seconds!\n\n` +
+          `Connect your Telegram to your Hive888 account in seconds!\n\n` +
         `<b>What's your registered email?</b>\n\n` +
         `<i>We'll send you a quick verification code to confirm it's really you!</i>`,
         { parse_mode: 'HTML' }
@@ -339,7 +338,7 @@ class TelegramBotService {
     const chatId = msg.chat.id;
 
     const helpMessage = 
-      `<b>PTGR HUB BOT COMMANDS</b>\n\n` +
+      `<b>Hive888 BOT COMMANDS</b>\n\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
       `/start - Welcome & get started\n` +
       `/register - Create your account (2 min!)\n` +
@@ -352,8 +351,8 @@ class TelegramBotService {
       `Need help? Just type any command!\n` +
       `Ready to join? Use /register or /link!\n\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
-      `<b>About PTGR HUB</b>\n` +
-      `Building Africa's Web3 Professionals!\n\n` +
+      `<b>About Hive888</b>\n` +
+      `An emerging interactive platform that brings together talent, enterprises, and institutions to collaborate within a trusted Web3 ecosystem.\n\n` +
       `Questions? We're here to help!`;
 
     await this.bot.sendMessage(chatId, helpMessage, { parse_mode: 'HTML' });
@@ -583,7 +582,7 @@ class TelegramBotService {
         await this.bot.sendMessage(chatId,
           `<b>SUCCESS! Account Linked!</b>\n\n` +
           `Welcome to the family, <b>${customer.first_name || 'Champion'}</b>!\n\n` +
-          `Your Telegram is now connected to PTGR HUB!\n\n` +
+          `Your Telegram is now connected to Hive888!\n\n` +
           `━━━━━━━━━━━━━━━━\n\n` +
           `<b>You're IN! Welcome to our exclusive community!</b>\n\n` +
           (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
@@ -642,7 +641,7 @@ class TelegramBotService {
 
       await this.bot.sendMessage(chatId,
         `<b>CONGRATULATIONS!</b>\n\n` +
-        `<b>Welcome to PTGR HUB, ${data.first_name}!</b>\n\n` +
+        `<b>Welcome to Hive888, ${data.first_name}!</b>\n\n` +
         `Your account is LIVE and ready to go!\n\n` +
         `━━━━━━━━━━━━━━━━\n\n` +
         `<b>YOU'RE NOW PART OF THE COMMUNITY!</b>\n\n` +
@@ -756,6 +755,169 @@ class TelegramBotService {
     if (this.bot && this.bot.stopPolling) {
       this.bot.stopPolling();
       logger.info('Telegram bot stopped');
+    }
+  }
+
+  /**
+   * Ban user from group (admin only)
+   */
+  async banUserFromGroup(telegramUserId, reason = null) {
+    if (!this.bot || !this.privateGroupId) {
+      throw new Error('Bot or group not configured');
+    }
+
+    try {
+      await this.bot.banChatMember(this.privateGroupId, telegramUserId);
+      logger.info('User banned from group', { telegramUserId, reason });
+      return true;
+    } catch (error) {
+      logger.error('Error banning user from group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unban user from group (admin only)
+   */
+  async unbanUserFromGroup(telegramUserId) {
+    if (!this.bot || !this.privateGroupId) {
+      throw new Error('Bot or group not configured');
+    }
+
+    try {
+      await this.bot.unbanChatMember(this.privateGroupId, telegramUserId, { only_if_banned: true });
+      logger.info('User unbanned from group', { telegramUserId });
+      return true;
+    } catch (error) {
+      logger.error('Error unbanning user from group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Kick user from group (admin only)
+   */
+  async kickUserFromGroup(telegramUserId) {
+    if (!this.bot || !this.privateGroupId) {
+      throw new Error('Bot or group not configured');
+    }
+
+    try {
+      await this.bot.banChatMember(this.privateGroupId, telegramUserId);
+      // Unban immediately to allow rejoin
+      await this.bot.unbanChatMember(this.privateGroupId, telegramUserId, { only_if_banned: true });
+      logger.info('User kicked from group', { telegramUserId });
+      return true;
+    } catch (error) {
+      logger.error('Error kicking user from group:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chat member info
+   */
+  async getChatMember(telegramUserId) {
+    if (!this.bot || !this.privateGroupId) {
+      throw new Error('Bot or group not configured');
+    }
+
+    try {
+      const member = await this.bot.getChatMember(this.privateGroupId, telegramUserId);
+      return member;
+    } catch (error) {
+      logger.error('Error getting chat member:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send bulk message to private list topic
+   */
+  async sendBulkMessageToPrivateList(messages) {
+    if (!this.bot || !this.privateGroupId || !this.privateTopicId) {
+      throw new Error('Bot or private topic not configured');
+    }
+
+    const results = [];
+    for (const message of messages) {
+      try {
+        await this.bot.sendMessage(this.privateGroupId, message, {
+          message_thread_id: this.privateTopicId,
+          parse_mode: 'HTML'
+        });
+        results.push({ success: true, message });
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        logger.error('Error sending bulk message to private list:', error);
+        results.push({ success: false, message, error: error.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Send bulk message to public list topic
+   */
+  async sendBulkMessageToPublicList(messages) {
+    if (!this.bot || !this.privateGroupId || !this.publicTopicId) {
+      throw new Error('Bot or public topic not configured');
+    }
+
+    const results = [];
+    for (const message of messages) {
+      try {
+        await this.bot.sendMessage(this.privateGroupId, message, {
+          message_thread_id: this.publicTopicId,
+          parse_mode: 'HTML'
+        });
+        results.push({ success: true, message });
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        logger.error('Error sending bulk message to public list:', error);
+        results.push({ success: false, message, error: error.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Send direct message to user
+   */
+  async sendDirectMessage(telegramUserId, message, options = {}) {
+    if (!this.bot) {
+      throw new Error('Bot not configured');
+    }
+
+    try {
+      await this.bot.sendMessage(telegramUserId, message, {
+        parse_mode: 'HTML',
+        ...options
+      });
+      logger.info('Direct message sent', { telegramUserId });
+      return true;
+    } catch (error) {
+      logger.error('Error sending direct message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get group members count
+   */
+  async getGroupMembersCount() {
+    if (!this.bot || !this.privateGroupId) {
+      throw new Error('Bot or group not configured');
+    }
+
+    try {
+      const chat = await this.bot.getChat(this.privateGroupId);
+      return chat.members_count || 0;
+    } catch (error) {
+      logger.error('Error getting group members count:', error);
+      throw error;
     }
   }
 }

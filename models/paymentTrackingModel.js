@@ -49,6 +49,7 @@ const PaymentTracking = {
       const sql = `
         SELECT 
           pt.*,
+          CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer_name,
           c.first_name,
           c.last_name,
           c.email,
@@ -194,6 +195,7 @@ const PaymentTracking = {
       let sql = `
         SELECT 
           pt.*,
+          CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer_name,
           c.first_name,
           c.last_name,
           c.email,
@@ -393,11 +395,16 @@ const PaymentTracking = {
       let sql = `
         SELECT 
           pt.*,
+          CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer_name,
+          c.first_name,
+          c.last_name,
+          c.email,
           ac.code as access_code,
           ac.university_name,
           sr.status as registration_status,
           sr.registered_at
         FROM payment_tracking pt
+        LEFT JOIN customers c ON pt.customer_id = c.customer_id
         LEFT JOIN access_codes ac ON pt.access_code_id = ac.id
         LEFT JOIN selfstudy_registrations sr ON pt.registration_id = sr.id
         WHERE pt.customer_id = ?
@@ -443,6 +450,7 @@ const PaymentTracking = {
       const sql = `
         SELECT 
           pt.*,
+          CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) as customer_name,
           c.first_name,
           c.last_name,
           c.email,

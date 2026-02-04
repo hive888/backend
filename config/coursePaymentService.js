@@ -4,7 +4,26 @@ const db = require('../config/database');
 const PaymentTracking = require('../models/paymentTrackingModel');
 const logger = require('../utils/logger');
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY_TEST, {
+// Use live key explicitly - prefer STRIPE_SECRET_KEY_LIVE, fallback to STRIPE_SECRET_KEY
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY_LIVE || process.env.STRIPE_SECRET_KEY;
+
+if (!stripeSecretKey) {
+  throw new Error('STRIPE_SECRET_KEY or STRIPE_SECRET_KEY_LIVE must be set');
+}
+
+// Validate that we're using a live key (not test key)
+if (stripeSecretKey.startsWith('sk_test_')) {
+  logger.warn('⚠️ WARNING: Test Stripe key detected. Using live key is required for production.');
+  throw new Error('Test Stripe key detected. Please use a live key (sk_live_...) for production.');
+}
+
+if (!stripeSecretKey.startsWith('sk_live_')) {
+  logger.warn('⚠️ WARNING: Stripe key format is unexpected. Expected sk_live_...');
+}
+
+logger.info('✅ Using Stripe LIVE key for course payments');
+
+const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2024-06-20',
 });
 
@@ -15,8 +34,8 @@ class CoursePaymentService {
     paymentReference,
     customerInfo,
     accessCodeInfo,
-    successUrl, // not used - using env variables instead
-    cancelUrl   // not used - using env variables instead
+    successUrl, // Frontend success redirect URL (falls back to env vars if not provided)
+    cancelUrl   // Frontend cancel redirect URL (falls back to env vars if not provided)
   ) {
     try {
       if (!amount || amount <= 0) {
@@ -31,11 +50,14 @@ class CoursePaymentService {
         throw new Error('Customer information is required');
       }
       
-      if (!accessCodeInfo || !accessCodeInfo.access_code) {
-        throw new Error('Access code information is required');
-      }
+      // Access code info is optional for direct payments
+      const hasAccessCode = accessCodeInfo && accessCodeInfo.access_code;
       
       currency = currency || 'USD';
+      
+      const description = hasAccessCode 
+        ? `Payment for course access using code: ${accessCodeInfo.access_code}`
+        : 'Direct course access payment';
       
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -45,9 +67,9 @@ class CoursePaymentService {
               currency: currency.toLowerCase(),
               product_data: {
                 name: "Course Access Payment",
-                description: `Payment for course access using code: ${accessCodeInfo.access_code}`,
+                description: description,
                 metadata: {
-                  university: accessCodeInfo.university_name || 'Unknown University',
+                  university: accessCodeInfo?.university_name || '',
                   customer_email: customerInfo.email || '',
                   customer_name: `${customerInfo.first_name || ''} ${customerInfo.last_name || ''}`.trim()
                 }
@@ -58,18 +80,19 @@ class CoursePaymentService {
           },
         ],
         mode: 'payment',
-        // USING YOUR ENVIRONMENT VARIABLES
-        success_url: `${process.env.FRONTENDHIVE_URL}${process.env.SUCCESS_CALLBACK_URL}`,
-        cancel_url: `${process.env.FRONTENDHIVE_URL}${process.env.CANCEL_CALLBACK_URL}`,
+        // Use provided successUrl/cancelUrl, or fall back to environment variables
+        success_url: successUrl || `${'https://hive-888-dashboard.vercel.app/payment/success'}`,
+        cancel_url: cancelUrl || `${'https://hive-888-dashboard.vercel.app/payment/cancel'}`,
         metadata: {
           payment_reference: paymentReference,
           amount: amount.toString(),
           currency: currency,
           customer_id: customerInfo.customer_id.toString(),
-          access_code_id: accessCodeInfo.access_code_id.toString(),
-          access_code: accessCodeInfo.access_code,
-          university_name: accessCodeInfo.university_name || '',
-          payment_type: 'course_access'
+          access_code_id: hasAccessCode ? accessCodeInfo.access_code_id.toString() : '',
+          access_code: hasAccessCode ? (accessCodeInfo.access_code || accessCodeInfo.code || '') : '',
+          university_name: accessCodeInfo?.university_name || '',
+          payment_type: accessCodeInfo?.payment_type || 'course_access',
+          is_direct_payment: hasAccessCode ? 'false' : 'true'
         },
         client_reference_id: paymentReference,
         customer_email: customerInfo.email || undefined,
@@ -79,7 +102,8 @@ class CoursePaymentService {
         sessionId: session.id,
         paymentReference,
         amount,
-        customerId: customerInfo.customer_id
+        customerId: customerInfo.customer_id,
+        isDirectPayment: !hasAccessCode
       });
 
       return {

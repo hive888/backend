@@ -6,6 +6,12 @@ const Contest = require('../models/Contest');
 const ContestRegistration = require('../models/ContestRegistration');
 const TalentPoolRegistration = require('../models/talentPoolModel');
 const AccessCode = require('../models/accessCodeModel');
+const PaymentTracking = require('../models/paymentTrackingModel');
+const ExitExamPayment = require('../models/ExitExamPayment');
+const University = require('../models/University');
+const Event = require('../models/Event');
+const SelfStudyRegistration = require('../models/selfStudyRegistrationModel');
+const CustomerCourseAccess = require('../models/customerCourseAccessModel');
 
 /**
  * Admin Dashboard Controller
@@ -25,6 +31,9 @@ const adminController = {
         userStats,
         contestStats,
         talentPoolStats,
+        paymentStats,
+        telegramStats,
+        courseStats,
         recentActivity
       ] = await Promise.all([
         // Customer Statistics
@@ -48,16 +57,14 @@ const adminController = {
         db.query(`
           SELECT
             COUNT(*) AS total_users,
-            COUNT(DISTINCT customer_id) AS users_with_customers,
-            SUM(CASE WHEN auth_provider = 'local' THEN 1 ELSE 0 END) AS local_auth,
-            SUM(CASE WHEN auth_provider = 'google' THEN 1 ELSE 0 END) AS google_auth
+            COUNT(DISTINCT customer_id) AS users_with_customers
           FROM users
         `),
         // Contest Statistics
         db.query(`
           SELECT
             COUNT(DISTINCT c.id) AS total_contests,
-            COUNT(DISTINCT cr.registration_id) AS total_registrations,
+            COUNT(DISTINCT cr.id) AS total_registrations,
             COUNT(DISTINCT cr.customer_id) AS unique_participants,
             SUM(CASE WHEN DATE(c.created_at) = CURDATE() THEN 1 ELSE 0 END) AS contests_created_today
           FROM contests c
@@ -72,6 +79,40 @@ const adminController = {
             SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
             SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS new_today
           FROM talent_pool_registration
+        `),
+        // Payment Statistics
+        db.query(`
+          SELECT
+            COUNT(*) AS total_payments,
+            SUM(CASE WHEN payment_status = 'completed' THEN 1 ELSE 0 END) AS completed_payments,
+            SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) AS pending_payments,
+            SUM(CASE WHEN payment_status = 'failed' THEN 1 ELSE 0 END) AS failed_payments,
+            SUM(CASE WHEN payment_status = 'completed' THEN amount ELSE 0 END) AS total_revenue,
+            AVG(CASE WHEN payment_status = 'completed' THEN amount ELSE NULL END) AS avg_payment_amount,
+            SUM(CASE WHEN payment_status = 'completed' AND DATE(created_at) = CURDATE() THEN amount ELSE 0 END) AS revenue_today,
+            SUM(CASE WHEN payment_status = 'completed' AND YEARWEEK(created_at) = YEARWEEK(CURDATE()) THEN amount ELSE 0 END) AS revenue_this_week,
+            SUM(CASE WHEN payment_status = 'completed' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN amount ELSE 0 END) AS revenue_this_month
+          FROM payment_tracking
+        `),
+        // Telegram Statistics
+        db.query(`
+          SELECT
+            COUNT(*) AS total_telegram_users,
+            SUM(CASE WHEN telegram_user_id IS NOT NULL AND telegram_user_id != 0 THEN 1 ELSE 0 END) AS active_telegram_users,
+            SUM(CASE WHEN telegram_user_id IS NULL OR telegram_user_id = 0 THEN 1 ELSE 0 END) AS blocked_telegram_users,
+            SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS new_today
+          FROM customers
+          WHERE telegram_user_id IS NOT NULL
+        `),
+        // Course Statistics
+        db.query(`
+          SELECT
+            COUNT(DISTINCT customer_id) AS total_registrations,
+            COUNT(DISTINCT CASE WHEN status = 'completed' THEN customer_id END) AS completed_courses,
+            COUNT(DISTINCT CASE WHEN status = 'active' THEN customer_id END) AS in_progress,
+            COUNT(DISTINCT CASE WHEN status = 'completed' THEN customer_id END) AS certificates_issued
+          FROM selfstudy_registrations
+          WHERE status IN ('active', 'completed')
         `),
         // Recent Activity (last 10 customer registrations)
         db.query(`
@@ -101,8 +142,16 @@ const adminController = {
         ORDER BY date ASC
       `);
 
-      // Revenue trend (empty since orders are removed)
-      const revenueTrends = [];
+      // Get revenue trends
+      const [revenueTrends] = await db.query(`
+        SELECT
+          DATE(created_at) AS date,
+          SUM(CASE WHEN payment_status = 'completed' THEN amount ELSE 0 END) AS amount
+        FROM payment_tracking
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        GROUP BY DATE(created_at)
+        ORDER BY date ASC
+      `);
 
       // Format trend data
       const formatTrendData = (data, days, defaultValue = 0) => {
@@ -112,7 +161,12 @@ const adminController = {
           date.setDate(date.getDate() - i);
           const dateStr = date.toISOString().split('T')[0];
           result.labels.push(dateStr);
-          const dayData = data.find(d => d.date?.toISOString().split('T')[0] === dateStr);
+          const dayData = data.find(d => {
+            const dataDate = d.date instanceof Date 
+              ? d.date.toISOString().split('T')[0] 
+              : (d.date?.toISOString?.()?.split('T')[0] || d.date);
+            return dataDate === dateStr;
+          });
           result.data.push(dayData ? (dayData.count || dayData.amount || defaultValue) : defaultValue);
         }
         return result;
@@ -121,15 +175,46 @@ const adminController = {
       return res.status(200).json({
         success: true,
         data: {
+          summary: {
+            total_customers: customerStats[0][0]?.total_customers || 0,
+            total_users: userStats[0][0]?.total_users || 0,
+            total_revenue: parseFloat(paymentStats[0][0]?.total_revenue || 0),
+            total_payments: paymentStats[0][0]?.total_payments || 0,
+            telegram_users: telegramStats[0][0]?.total_telegram_users || 0,
+            active_contests: contestStats[0][0]?.total_contests || 0
+          },
           overview: {
             customers: customerStats[0][0] || {},
             users: userStats[0][0] || {},
             contests: contestStats[0][0] || {},
-            talent_pool: talentPoolStats[0][0] || {}
+            talent_pool: talentPoolStats[0][0] || {},
+            payments: {
+              total_payments: paymentStats[0][0]?.total_payments || 0,
+              completed_payments: paymentStats[0][0]?.completed_payments || 0,
+              pending_payments: paymentStats[0][0]?.pending_payments || 0,
+              failed_payments: paymentStats[0][0]?.failed_payments || 0,
+              total_revenue: parseFloat(paymentStats[0][0]?.total_revenue || 0),
+              avg_payment_amount: parseFloat(paymentStats[0][0]?.avg_payment_amount || 0),
+              revenue_today: parseFloat(paymentStats[0][0]?.revenue_today || 0),
+              revenue_this_week: parseFloat(paymentStats[0][0]?.revenue_this_week || 0),
+              revenue_this_month: parseFloat(paymentStats[0][0]?.revenue_this_month || 0)
+            },
+            telegram: {
+              total_telegram_users: telegramStats[0][0]?.total_telegram_users || 0,
+              active_telegram_users: telegramStats[0][0]?.active_telegram_users || 0,
+              blocked_telegram_users: telegramStats[0][0]?.blocked_telegram_users || 0,
+              new_today: telegramStats[0][0]?.new_today || 0
+            },
+            courses: {
+              total_registrations: courseStats[0][0]?.total_registrations || 0,
+              completed_courses: courseStats[0][0]?.completed_courses || 0,
+              in_progress: courseStats[0][0]?.in_progress || 0,
+              certificates_issued: courseStats[0][0]?.certificates_issued || 0
+            }
           },
           trends: {
             customers: formatTrendData(customerTrends, 7),
-            revenue: { labels: [], data: [] }
+            revenue: formatTrendData(revenueTrends, 7, 0)
           },
           recent_activity: {
             new_customers: recentActivity[0] || []
@@ -953,6 +1038,1173 @@ const adminController = {
       });
     }
   },
+
+  /**
+   * Get Summary Report
+   * GET /api/admin/report/summary
+   */
+  async getSummaryReport(req, res) {
+    try {
+      const { start_date, end_date } = req.query;
+      
+      // Build date filter
+      let dateFilter = '';
+      const params = [];
+      if (start_date) {
+        dateFilter += ' AND DATE(created_at) >= ?';
+        params.push(start_date);
+      }
+      if (end_date) {
+        dateFilter += ' AND DATE(created_at) <= ?';
+        params.push(end_date);
+      }
+
+      // Get customer stats
+      const [customerStats] = await db.query(`
+        SELECT
+          COUNT(*) AS total_customers,
+          SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS new_customers
+        FROM customers
+        WHERE deleted_at IS NULL ${dateFilter}
+      `, params);
+
+      // Get payment stats
+      const paymentParams = [];
+      let paymentFilter = '';
+      if (start_date) {
+        paymentFilter += ' AND DATE(created_at) >= ?';
+        paymentParams.push(start_date);
+      }
+      if (end_date) {
+        paymentFilter += ' AND DATE(created_at) <= ?';
+        paymentParams.push(end_date);
+      }
+
+      const [paymentStats] = await db.query(`
+        SELECT
+          COUNT(*) AS total_payments,
+          SUM(CASE WHEN payment_status = 'completed' THEN amount ELSE 0 END) AS total_revenue
+        FROM payment_tracking
+        WHERE 1=1 ${paymentFilter}
+      `, paymentParams);
+
+      // Get course stats
+      const [courseStats] = await db.query(`
+        SELECT
+          COUNT(DISTINCT customer_id) AS active_courses,
+          COUNT(DISTINCT CASE WHEN status = 'completed' THEN customer_id END) AS certificates_issued
+        FROM selfstudy_registrations
+        WHERE status IN ('active', 'completed')
+      `);
+
+      // Get breakdown by customer type
+      const [customerTypeBreakdown] = await db.query(`
+        SELECT
+          customer_type,
+          COUNT(*) AS count
+        FROM customers
+        WHERE deleted_at IS NULL ${dateFilter}
+        GROUP BY customer_type
+      `, params);
+
+      // Get breakdown by payment status
+      const [paymentStatusBreakdown] = await db.query(`
+        SELECT
+          payment_status,
+          COUNT(*) AS count
+        FROM payment_tracking
+        WHERE 1=1 ${paymentFilter}
+        GROUP BY payment_status
+      `, paymentParams);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          period: {
+            start_date: start_date || null,
+            end_date: end_date || null
+          },
+          summary: {
+            total_customers: customerStats[0]?.total_customers || 0,
+            new_customers: customerStats[0]?.new_customers || 0,
+            total_revenue: parseFloat(paymentStats[0]?.total_revenue || 0),
+            total_payments: paymentStats[0]?.total_payments || 0,
+            active_courses: courseStats[0]?.active_courses || 0,
+            certificates_issued: courseStats[0]?.certificates_issued || 0
+          },
+          breakdown: {
+            by_customer_type: customerTypeBreakdown.reduce((acc, row) => {
+              acc[row.customer_type] = row.count;
+              return acc;
+            }, {}),
+            by_payment_status: paymentStatusBreakdown.reduce((acc, row) => {
+              acc[row.payment_status] = row.count;
+              return acc;
+            }, {})
+          },
+          insights: []
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get summary report error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve summary report',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Customers with Course Progress
+   * GET /api/admin/customers/with-progress
+   */
+  async getCustomersWithProgress(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        search = '',
+        sort_by = 'completed_at',
+        sort_order = 'DESC'
+      } = req.query;
+
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      // Build search condition
+      let searchCondition = '';
+      const searchParams = [];
+      if (search) {
+        searchCondition = ` AND (
+          c.first_name LIKE ? OR 
+          c.last_name LIKE ? OR 
+          CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR
+          c.email LIKE ?
+        )`;
+        const searchTerm = `%${search}%`;
+        searchParams.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      }
+
+      // Build sort condition
+      const allowedSortFields = {
+        'completed_at': 'MAX(csp.completed_at)',
+        'first_completed_at': 'MIN(csp.completed_at)',
+        'last_completed_at': 'MAX(csp.completed_at)',
+        'completed_subsections': 'COUNT(DISTINCT csp.subsection_id)',
+        'first_name': 'c.first_name',
+        'last_name': 'c.last_name',
+        'email': 'c.email',
+        'created_at': 'c.created_at'
+      };
+      const sortField = allowedSortFields[sort_by] || allowedSortFields['completed_at'];
+      const sortDir = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+      // Get customers with progress
+      const query = `
+        SELECT
+          c.customer_id,
+          c.first_name,
+          c.last_name,
+          CONCAT(c.first_name, ' ', c.last_name) AS full_name,
+          c.email,
+          c.phone,
+          c.profile_picture,
+          COUNT(DISTINCT csp.subsection_id) AS completed_subsections,
+          MIN(csp.completed_at) AS first_completed_at,
+          MAX(csp.completed_at) AS last_completed_at,
+          c.created_at,
+          COALESCE(cca.access_code_id, sr.access_code_id) AS access_code_id,
+          COALESCE(ac.code, NULL) AS access_code,
+          CASE 
+            WHEN cca.access_code_id IS NOT NULL THEN 'customer_course_access'
+            WHEN sr.access_code_id IS NOT NULL THEN 'selfstudy_registrations'
+            ELSE NULL
+          END AS access_code_source
+        FROM customers c
+        INNER JOIN customer_subsection_progress csp ON c.customer_id = csp.customer_id
+        LEFT JOIN customer_course_access cca ON c.customer_id = cca.customer_id
+        LEFT JOIN selfstudy_registrations sr ON c.customer_id = sr.customer_id AND sr.status = 'active'
+        LEFT JOIN access_codes ac ON COALESCE(cca.access_code_id, sr.access_code_id) = ac.id
+        WHERE c.deleted_at IS NULL
+          AND csp.status = 'completed'
+          ${searchCondition}
+        GROUP BY c.customer_id, c.first_name, c.last_name, c.email, c.phone, c.profile_picture, c.created_at,
+                 cca.access_code_id, sr.access_code_id, ac.code
+        ORDER BY ${sortField} ${sortDir}
+        LIMIT ? OFFSET ?
+      `;
+
+      const [customers] = await db.query(query, [...searchParams, parseInt(limit), offset]);
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(DISTINCT c.customer_id) AS total
+        FROM customers c
+        INNER JOIN customer_subsection_progress csp ON c.customer_id = csp.customer_id
+        WHERE c.deleted_at IS NULL
+          AND csp.status = 'completed'
+          ${searchCondition}
+      `;
+      const [countResult] = await db.query(countQuery, searchParams);
+      const total = countResult[0]?.total || 0;
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          customers: customers || [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            total_pages: Math.ceil(total / parseInt(limit))
+          }
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get customers with progress error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve customers with progress',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get All Payments
+   * GET /api/admin/payments
+   */
+  async getPayments(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 50,
+        customer_id,
+        access_code_id,
+        payment_status,
+        payment_type,
+        start_date,
+        end_date
+      } = req.query;
+
+      const filters = {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        customer_id: customer_id ? parseInt(customer_id) : undefined,
+        access_code_id: access_code_id ? parseInt(access_code_id) : undefined,
+        payment_status: payment_status || undefined,
+        start_date: start_date || undefined,
+        end_date: end_date || undefined
+      };
+
+      // Note: payment_type filter is not directly in payment_tracking table
+      // It would need to be determined from related tables if needed
+
+      const result = await PaymentTracking.getAll(filters);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          payments: result.payments || [],
+          pagination: {
+            page: result.page,
+            limit: result.limit,
+            total: result.total,
+            total_pages: result.total_pages
+          }
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get payments error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve payments',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Payment Statistics
+   * GET /api/admin/payments/stats
+   */
+  async getPaymentStats(req, res) {
+    try {
+      const stats = await PaymentTracking.getStats();
+
+      // Calculate additional stats
+      const revenueToday = stats.daily_stats
+        .filter(d => d.date === new Date().toISOString().split('T')[0])
+        .reduce((sum, d) => sum + parseFloat(d.daily_revenue || 0), 0);
+
+      const revenueThisWeek = stats.daily_stats
+        .filter(d => {
+          const date = new Date(d.date);
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          return date >= weekAgo;
+        })
+        .reduce((sum, d) => sum + parseFloat(d.daily_revenue || 0), 0);
+
+      const revenueThisMonth = stats.daily_stats
+        .filter(d => {
+          const date = new Date(d.date);
+          const now = new Date();
+          return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        })
+        .reduce((sum, d) => sum + parseFloat(d.daily_revenue || 0), 0);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          total_payments: stats.overview.total_payments || 0,
+          completed_payments: stats.overview.completed_payments || 0,
+          pending_payments: stats.overview.pending_payments || 0,
+          failed_payments: stats.overview.failed_payments || 0,
+          total_revenue: parseFloat(stats.overview.total_revenue || 0),
+          avg_payment_amount: parseFloat(stats.overview.avg_payment_amount || 0),
+          revenue_today: revenueToday,
+          revenue_this_week: revenueThisWeek,
+          revenue_this_month: revenueThisMonth
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get payment stats error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve payment statistics',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Payment by ID
+   * GET /api/admin/payments/:id
+   */
+  async getPaymentById(req, res) {
+    try {
+      const { id } = req.params;
+      const payment = await PaymentTracking.getById(id);
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          error: 'Payment not found',
+          code: 'PAYMENT_NOT_FOUND'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: payment
+      });
+    } catch (err) {
+      logger.error('Admin get payment by ID error', {
+        error: err.message,
+        paymentId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve payment',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Customer Payments
+   * GET /api/admin/payments/customer/:customer_id
+   */
+  async getCustomerPayments(req, res) {
+    try {
+      const { customer_id } = req.params;
+      const payments = await PaymentTracking.getCustomerPayments(customer_id);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          payments: payments || []
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get customer payments error', {
+        error: err.message,
+        customerId: req.params.customer_id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve customer payments',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Payments by Status
+   * GET /api/admin/payments/status/:status
+   */
+  async getPaymentsByStatus(req, res) {
+    try {
+      const { status } = req.params;
+      const payments = await PaymentTracking.getPaymentsByStatus(status, 100);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          payments: payments || []
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get payments by status error', {
+        error: err.message,
+        status: req.params.status
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve payments by status',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get All Exit Exam Payments
+   * GET /api/admin/exit-exam-payments
+   */
+  async getExitExamPayments(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 50,
+        customer_id,
+        access_code_id,
+        payment_status
+      } = req.query;
+
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      let query = `
+        SELECT
+          eep.*,
+          c.first_name,
+          c.last_name,
+          c.email,
+          ac.code AS access_code,
+          ac.university_name
+        FROM exit_exam_payments eep
+        LEFT JOIN customers c ON eep.customer_id = c.customer_id
+        LEFT JOIN access_codes ac ON eep.access_code_id = ac.id
+        WHERE 1=1
+      `;
+      const params = [];
+
+      if (customer_id) {
+        query += ` AND eep.customer_id = ?`;
+        params.push(customer_id);
+      }
+
+      if (access_code_id) {
+        query += ` AND eep.access_code_id = ?`;
+        params.push(access_code_id);
+      }
+
+      if (payment_status) {
+        query += ` AND eep.payment_status = ?`;
+        params.push(payment_status);
+      }
+
+      // Get total count
+      const countQuery = query.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) AS total FROM');
+      const [countResult] = await db.query(countQuery, params);
+      const total = countResult[0]?.total || 0;
+
+      query += ` ORDER BY eep.created_at DESC LIMIT ? OFFSET ?`;
+      params.push(parseInt(limit), offset);
+
+      const [payments] = await db.query(query, params);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          payments: payments || [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            total_pages: Math.ceil(total / parseInt(limit))
+          }
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get exit exam payments error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve exit exam payments',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Exit Exam Payment by ID
+   * GET /api/admin/exit-exam-payments/:id
+   */
+  async getExitExamPaymentById(req, res) {
+    try {
+      const { id } = req.params;
+      const payment = await ExitExamPayment.findById(id);
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          error: 'Exit exam payment not found',
+          code: 'PAYMENT_NOT_FOUND'
+        });
+      }
+
+      // Get customer and access code details
+      const [customer] = await db.query(
+        'SELECT first_name, last_name, email FROM customers WHERE customer_id = ?',
+        [payment.customer_id]
+      );
+
+      const [accessCode] = await db.query(
+        'SELECT code, university_name FROM access_codes WHERE id = ?',
+        [payment.access_code_id]
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          ...payment,
+          first_name: customer[0]?.first_name || null,
+          last_name: customer[0]?.last_name || null,
+          email: customer[0]?.email || null,
+          access_code: accessCode[0]?.code || null,
+          university_name: accessCode[0]?.university_name || null
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get exit exam payment by ID error', {
+        error: err.message,
+        paymentId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve exit exam payment',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Telegram Users
+   * GET /api/admin/telegram/users
+   */
+  async getTelegramUsers(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 50,
+        is_blocked
+      } = req.query;
+
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      let query = `
+        SELECT
+          c.customer_id,
+          c.telegram_user_id,
+          c.telegram_username,
+          c.first_name,
+          c.last_name,
+          c.email,
+          c.is_active,
+          CASE WHEN c.telegram_user_id IS NOT NULL AND c.telegram_user_id != 0 THEN 0 ELSE 1 END AS is_blocked,
+          c.created_at AS joined_at
+        FROM customers c
+        WHERE c.telegram_user_id IS NOT NULL AND c.telegram_user_id != 0
+      `;
+      const params = [];
+
+      if (is_blocked !== undefined) {
+        const blockedValue = is_blocked === 'true' ? 1 : 0;
+        query += ` AND CASE WHEN c.telegram_user_id IS NOT NULL AND c.telegram_user_id != 0 THEN 0 ELSE 1 END = ?`;
+        params.push(blockedValue);
+      }
+
+      // Get total count
+      const countQuery = query.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) AS total FROM');
+      const [countResult] = await db.query(countQuery, params);
+      const total = countResult[0]?.total || 0;
+
+      query += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ?`;
+      params.push(parseInt(limit), offset);
+
+      const [users] = await db.query(query, params);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          users: users || [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            total_pages: Math.ceil(total / parseInt(limit))
+          }
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get telegram users error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve telegram users',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Telegram User Details
+   * GET /api/admin/telegram/users/:telegram_user_id
+   */
+  async getTelegramUserDetails(req, res) {
+    try {
+      const { telegram_user_id } = req.params;
+      const [user] = await db.query(`
+        SELECT
+          c.*,
+          CASE WHEN c.telegram_user_id IS NOT NULL AND c.telegram_user_id != 0 THEN 0 ELSE 1 END AS is_blocked
+        FROM customers c
+        WHERE c.telegram_user_id = ?
+      `, [telegram_user_id]);
+
+      if (!user || user.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Telegram user not found',
+          code: 'USER_NOT_FOUND'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: user[0]
+      });
+    } catch (err) {
+      logger.error('Admin get telegram user details error', {
+        error: err.message,
+        telegramUserId: req.params.telegram_user_id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve telegram user details',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Telegram Statistics
+   * GET /api/admin/telegram/stats
+   */
+  async getTelegramStats(req, res) {
+    try {
+      const [stats] = await db.query(`
+        SELECT
+          COUNT(*) AS total_users,
+          SUM(CASE WHEN telegram_user_id IS NOT NULL AND telegram_user_id != 0 THEN 1 ELSE 0 END) AS active_users,
+          SUM(CASE WHEN telegram_user_id IS NULL OR telegram_user_id = 0 THEN 1 ELSE 0 END) AS blocked_users,
+          SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS new_today,
+          SUM(CASE WHEN YEARWEEK(created_at) = YEARWEEK(CURDATE()) THEN 1 ELSE 0 END) AS new_this_week,
+          SUM(CASE WHEN MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN 1 ELSE 0 END) AS new_this_month
+        FROM customers
+        WHERE telegram_user_id IS NOT NULL
+      `);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          total_users: stats[0]?.total_users || 0,
+          active_users: stats[0]?.active_users || 0,
+          blocked_users: stats[0]?.blocked_users || 0,
+          new_today: stats[0]?.new_today || 0,
+          new_this_week: stats[0]?.new_this_week || 0,
+          new_this_month: stats[0]?.new_this_month || 0
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get telegram stats error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve telegram statistics',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get All Universities
+   * GET /api/admin/universities
+   */
+  async getUniversities(req, res) {
+    try {
+      const {
+        is_active,
+        search
+      } = req.query;
+
+      const filters = {
+        is_active: is_active !== undefined ? is_active === 'true' : undefined,
+        search: search || undefined
+      };
+
+      const universities = await University.findAll(filters);
+
+      return res.status(200).json({
+        success: true,
+        data: universities || []
+      });
+    } catch (err) {
+      logger.error('Admin get universities error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve universities',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get University by ID
+   * GET /api/admin/universities/:id
+   */
+  async getUniversityById(req, res) {
+    try {
+      const { id } = req.params;
+      const university = await University.findById(id);
+
+      if (!university) {
+        return res.status(404).json({
+          success: false,
+          error: 'University not found',
+          code: 'UNIVERSITY_NOT_FOUND'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: university
+      });
+    } catch (err) {
+      logger.error('Admin get university by ID error', {
+        error: err.message,
+        universityId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve university',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Create University
+   * POST /api/admin/universities
+   */
+  async createUniversity(req, res) {
+    try {
+      const { university_name, is_active = true } = req.body;
+
+      if (!university_name) {
+        return res.status(400).json({
+          success: false,
+          error: 'University name is required',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      // Handle file uploads if present (for certificate files)
+      // Note: File upload handling would need to be implemented with multer
+      // For now, we'll accept URL strings
+      const universityData = {
+        university_name,
+        is_active,
+        certificate_file_url: req.body.certificate_file_url || null,
+        achievement_certificate_file_url: req.body.achievement_certificate_file_url || null,
+        stamp_image_url: req.body.stamp_image_url || null
+      };
+
+      const universityId = await University.create(universityData);
+
+      logger.info('Admin created university', {
+        adminId: req.user.user_id,
+        universityId,
+        universityName: university_name
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'University created successfully',
+        data: {
+          id: universityId
+        }
+      });
+    } catch (err) {
+      logger.error('Admin create university error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create university',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Update University
+   * PUT /api/admin/universities/:id
+   */
+  async updateUniversity(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const university = await University.findById(id);
+      if (!university) {
+        return res.status(404).json({
+          success: false,
+          error: 'University not found',
+          code: 'UNIVERSITY_NOT_FOUND'
+        });
+      }
+
+      await University.update(id, updateData);
+
+      logger.info('Admin updated university', {
+        adminId: req.user.user_id,
+        universityId: id
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'University updated successfully'
+      });
+    } catch (err) {
+      logger.error('Admin update university error', {
+        error: err.message,
+        universityId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update university',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Delete University
+   * DELETE /api/admin/universities/:id
+   */
+  async deleteUniversity(req, res) {
+    try {
+      const { id } = req.params;
+      const university = await University.findById(id);
+
+      if (!university) {
+        return res.status(404).json({
+          success: false,
+          error: 'University not found',
+          code: 'UNIVERSITY_NOT_FOUND'
+        });
+      }
+
+      await University.delete(id);
+
+      logger.info('Admin deleted university', {
+        adminId: req.user.user_id,
+        universityId: id
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'University deleted successfully'
+      });
+    } catch (err) {
+      logger.error('Admin delete university error', {
+        error: err.message,
+        universityId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete university',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get All Events (Admin)
+   * GET /api/admin/events
+   */
+  async getEvents(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        search = '',
+        start_date,
+        end_date
+      } = req.query;
+
+      const filters = {
+        page: parseInt(page),
+        limit: Math.min(parseInt(limit), 100), // Max 100
+        search: search || undefined,
+        start_date: start_date || undefined,
+        end_date: end_date || undefined
+      };
+
+      const result = await Event.findAllAdmin(filters);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          events: result.events || [],
+          pagination: {
+            page: result.page,
+            limit: result.limit,
+            total: result.total,
+            total_pages: result.total_pages
+          }
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get events error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve events',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Event by ID (Admin)
+   * GET /api/admin/events/:id
+   */
+  async getEventById(req, res) {
+    try {
+      const { id } = req.params;
+      const event = await Event.findById(id);
+
+      if (!event) {
+        return res.status(404).json({
+          success: false,
+          error: 'Event not found',
+          code: 'EVENT_NOT_FOUND'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: event
+      });
+    } catch (err) {
+      logger.error('Admin get event by ID error', {
+        error: err.message,
+        eventId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve event',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Create Event
+   * POST /api/admin/events
+   */
+  async createEvent(req, res) {
+    try {
+      const { event_name, event_date, short_description, detailed_content } = req.body;
+
+      if (!event_name || !event_date || !short_description || !detailed_content) {
+        return res.status(400).json({
+          success: false,
+          error: 'All fields are required: event_name, event_date, short_description, detailed_content',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(event_date)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD',
+          code: 'INVALID_DATE_FORMAT'
+        });
+      }
+
+      const eventId = await Event.create({
+        event_name,
+        event_date,
+        short_description,
+        detailed_content
+      });
+
+      logger.info('Admin created event', {
+        adminId: req.user.user_id,
+        eventId,
+        eventName: event_name
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Event created successfully',
+        data: {
+          id: eventId
+        }
+      });
+    } catch (err) {
+      logger.error('Admin create event error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create event',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Update Event
+   * PUT /api/admin/events/:id
+   */
+  async updateEvent(req, res) {
+    try {
+      const { id } = req.params;
+      const { event_name, event_date, short_description, detailed_content } = req.body;
+
+      const event = await Event.findById(id);
+      if (!event) {
+        return res.status(404).json({
+          success: false,
+          error: 'Event not found',
+          code: 'EVENT_NOT_FOUND'
+        });
+      }
+
+      if (!event_name || !event_date || !short_description || !detailed_content) {
+        return res.status(400).json({
+          success: false,
+          error: 'All fields are required: event_name, event_date, short_description, detailed_content',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(event_date)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD',
+          code: 'INVALID_DATE_FORMAT'
+        });
+      }
+
+      await Event.update(id, {
+        event_name,
+        event_date,
+        short_description,
+        detailed_content
+      });
+
+      logger.info('Admin updated event', {
+        adminId: req.user.user_id,
+        eventId: id
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Event updated successfully'
+      });
+    } catch (err) {
+      logger.error('Admin update event error', {
+        error: err.message,
+        eventId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update event',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Delete Event
+   * DELETE /api/admin/events/:id
+   */
+  async deleteEvent(req, res) {
+    try {
+      const { id } = req.params;
+      const event = await Event.findById(id);
+
+      if (!event) {
+        return res.status(404).json({
+          success: false,
+          error: 'Event not found',
+          code: 'EVENT_NOT_FOUND'
+        });
+      }
+
+      await Event.delete(id);
+
+      logger.info('Admin deleted event', {
+        adminId: req.user.user_id,
+        eventId: id
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Event deleted successfully'
+      });
+    } catch (err) {
+      logger.error('Admin delete event error', {
+        error: err.message,
+        eventId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete event',
+        code: 'SERVER_ERROR'
+      });
+    }
+  }
 
 };
 

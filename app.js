@@ -22,6 +22,9 @@ const subsectionsRoutes = require('./routes/subsectionsRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const academyRoutes = require('./routes/academyRoutes');
 const telegramRoutes = require('./routes/telegramRoutes');
+const newsletterRoutes = require('./routes/newsletterRoutes');
+const auditRoutes = require('./routes/auditRoutes');
+const eventRoutes = require('./routes/eventRoutes');
 const authMiddleware = require('./middleware/authMiddleware');
 const logger = require('./utils/logger');
 const app = express();
@@ -83,7 +86,10 @@ app.use((req, res, next) => {
 app.use(cookieParser());
 
 // 4. Security Headers
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  crossOriginEmbedderPolicy: false
+}));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -95,14 +101,30 @@ app.use((req, res, next) => {
 });
 
 // 5. CORS Configuration
+const allowedOrigins = [
+  'https://admin.hive888.org',
+  'https://hive888.org',
+  'http://admin.hive888.org',
+  'http://hive888.org'
+];
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Authorization'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  maxAge: 86400
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
+
 
 // 6. HTTP Parameter Pollution protection
 app.use(hpp({
@@ -142,6 +164,9 @@ app.use('/api/subsections', subsectionsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academy', academyRoutes);
 app.use('/api/telegram', telegramRoutes);
+app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/events', eventRoutes);
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 9.5. Simple built-in Google Auth test page (dev utility)

@@ -2,7 +2,27 @@
 const Stripe = require('stripe');
 const db = require('../config/database');
 // Note: Order and Transaction models removed - this file may need updates if used elsewhere
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+
+// Use live key explicitly - prefer STRIPE_SECRET_KEY_LIVE, fallback to STRIPE_SECRET_KEY
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY_LIVE || process.env.STRIPE_SECRET_KEY;
+
+if (!stripeSecretKey) {
+  throw new Error('STRIPE_SECRET_KEY or STRIPE_SECRET_KEY_LIVE must be set');
+}
+
+// Validate that we're using a live key (not test key)
+if (stripeSecretKey.startsWith('sk_test_')) {
+  console.warn('⚠️ WARNING: Test Stripe key detected. Using live key is required for production.');
+  throw new Error('Test Stripe key detected. Please use a live key (sk_live_...) for production.');
+}
+
+if (!stripeSecretKey.startsWith('sk_live_')) {
+  console.warn('⚠️ WARNING: Stripe key format is unexpected. Expected sk_live_...');
+}
+
+console.log('✅ Using Stripe LIVE key for payments');
+
+const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2024-06-20',
 });
 
