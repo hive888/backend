@@ -81,8 +81,8 @@ class CoursePaymentService {
         ],
         mode: 'payment',
         // Use provided successUrl/cancelUrl, or fall back to environment variables
-        success_url: successUrl || `${'https://hive-888-dashboard.vercel.app/payment/success'}`,
-        cancel_url: cancelUrl || `${'https://hive-888-dashboard.vercel.app/payment/cancel'}`,
+        success_url: successUrl || `${'https://hub.hive888.org/payment/success'}`,
+        cancel_url: cancelUrl || `${'https://hub.hive888.org/payment/cancel'}`,
         metadata: {
           payment_reference: paymentReference,
           amount: amount.toString(),

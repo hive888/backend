@@ -267,8 +267,8 @@ exports.checkCourseAccessFromToken = async (req, res) => {
       const paymentReference = `AC-${lockedCode.id}-${customer.customer_id}-${Date.now()}`;
       
       // Generate payment URLs
-      const successUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app/education/self-study'}`;
-      const cancelUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app'}`;
+      const successUrl = `${process.env.FRONTEND_URL || 'https://hub.hive888.org/education/self-study'}`;
+      const cancelUrl = `${process.env.FRONTEND_URL || 'https://hub.hive888.org'}`;
       
       try {
         // Create Stripe checkout session using NEW CoursePaymentService
@@ -1091,7 +1091,7 @@ exports.getSubsectionQuizInfo = async (req, res) => {
                   exit_exam_fee: exitExamFee,
                   payment_type: 'exit_exam'
                 };
-                const successUrl = 'https://hive-888-dashboard.vercel.app/education/self-study/259/quiz/play/mcq';
+                const successUrl = 'https://hub.hive88.org/education/self-study/259/quiz/play/mcq';
                 const cancelUrl = `${process.env.FRONTENDHIVE_URL || process.env.FRONTEND_URL}${process.env.CANCEL_CALLBACK_URL || '/payment/cancel'}`;
 
                 // Create payment record if doesn't exist
@@ -1358,7 +1358,7 @@ exports.submitSubsectionQuiz = async (req, res) => {
               exit_exam_fee: exitExamFee,
               payment_type: 'exit_exam'
             };
-            const successUrl = 'https://hive-888-dashboard.vercel.app/education/self-study/259/quiz/play/mcq';
+            const successUrl = 'https://hub.hive888.org/education/self-study/259/quiz/play/mcq';
             const cancelUrl = `${process.env.FRONTENDHIVE_URL || process.env.FRONTEND_URL}${process.env.CANCEL_CALLBACK_URL || '/payment/cancel'}`;
 
             // Check for pending payment first
@@ -1948,8 +1948,8 @@ exports.createDirectCourseAccessPayment = async (req, res) => {
     const paymentReference = `DIRECT-${customerId}-${Date.now()}`;
 
     // Generate payment URLs
-    const successUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app'}/payment/success`;
-    const cancelUrl = `${process.env.FRONTEND_URL || 'https://hive-888-dashboard.vercel.app'}/payment/cancel`;
+    const successUrl = `${process.env.FRONTEND_URL || 'https://hub.hive888.orgp'}/payment/success`;
+    const cancelUrl = `${process.env.FRONTEND_URL || 'https://hub.hive888.org'}/payment/cancel`;
 
     try {
       // Create Stripe checkout session (we still send a system access_code_id to satisfy webhook + DB constraints)

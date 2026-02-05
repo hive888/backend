@@ -105,6 +105,8 @@ const allowedOrigins = [
   'https://admin.hive888.org',
   'https://hive888.org',
   'http://admin.hive888.org',
+  'https://hub.hive888.org',
+  'http://hub.hive888.org',
   'http://hive888.org'
 ];
 

@@ -127,7 +127,7 @@ const exitExamPaymentController = {
       };
 
       // Default success URL: redirect to final quiz after payment
-      const defaultSuccessUrl = 'https://hive-888-dashboard.vercel.app/education/self-study/259/quiz/play/mcq';
+      const defaultSuccessUrl = 'https://hub.hive888.org/education/self-study/259/quiz/play/mcq';
       const successUrl = req.body.success_url || defaultSuccessUrl;
       const cancelUrl = req.body.cancel_url || `${process.env.FRONTENDHIVE_URL || process.env.FRONTEND_URL}${process.env.CANCEL_CALLBACK_URL || '/payment/cancel'}`;
 

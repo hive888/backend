@@ -15,7 +15,7 @@ const coursePaymentController = require('../controllers/coursePaymentWebhookCont
 router.get('/test-welcome-email', async (req, res) => {
   try {
     // Static values for testing
-    const email = 'mpho@ietsa.org.za';
+    const email = 'jemaneh.2011@gmail.com';
     const firstName = 'User';
 
     await sendCourseRegistrationWelcomeEmail(email, firstName);
