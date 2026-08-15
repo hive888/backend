@@ -9,6 +9,7 @@ const User = require('../models/User');
 const {sendPasswordResetEmail,sendVerificationEmail,sendWelcomeEmail,}=require('../utils/email');
 const jwt = require('jsonwebtoken');
 const { toE164 } = require('../utils/phone');
+const { isAdministrator, ROLE_IDS } = require('../config/roles');
 // const mlmController = require('./mlmController'); // Removed - not needed for this project
 const lastSendMap = new Map();
 const COOLDOWN_MS = 0 * 1000; // 60 seconds
@@ -49,35 +50,43 @@ const customerController = {
         if (!customer) return 0;
 
         const fields = {
-            // Basic required fields (40 points total)
+            // Basic required/optional fields
             first_name: customer.first_name && String(customer.first_name).trim().length > 0,
             last_name: customer.last_name && String(customer.last_name).trim().length > 0,
             email: customer.email && String(customer.email).trim().length > 0,
             phone: customer.phone && String(customer.phone).trim().length > 0 && customer.phone !== '99999999999', // Exclude default phone
-            
-            // Basic optional fields (30 points total)
             profile_picture: customer.profile_picture && String(customer.profile_picture).trim().length > 0,
             date_of_birth: customer.date_of_birth !== null && customer.date_of_birth !== undefined,
             gender: customer.gender && customer.gender !== 'prefer_not_to_say' && String(customer.gender).trim().length > 0,
             
-            // Profile details fields (30 points total)
+            // Profile details fields
             location: profileDetails?.location && String(profileDetails.location).trim().length > 0,
             bio: profileDetails?.bio && String(profileDetails.bio).trim().length > 0,
-            social_links: profileDetails?.social_links && typeof profileDetails.social_links === 'object' && Object.keys(profileDetails.social_links).length > 0
+            social_links: profileDetails?.social_links && typeof profileDetails.social_links === 'object' && Object.keys(profileDetails.social_links).length > 0,
+            position: profileDetails?.position && String(profileDetails.position).trim().length > 0,
+            organization: profileDetails?.organization && String(profileDetails.organization).trim().length > 0,
+            skills: profileDetails?.skills && Array.isArray(profileDetails.skills) && profileDetails.skills.length > 0,
+            experience: profileDetails?.experience && String(profileDetails.experience).trim().length > 0,
+            documents: profileDetails?.documents && Array.isArray(profileDetails.documents) && profileDetails.documents.length > 0
         };
 
-        // Calculate points (10 points per field, total 100)
+        // Calculate points (total 100)
         const fieldWeights = {
-            first_name: 10,
-            last_name: 10,
-            email: 10,
-            phone: 10,
+            first_name: 5,
+            last_name: 5,
+            email: 5,
+            phone: 5,
             profile_picture: 10,
-            date_of_birth: 10,
-            gender: 10,
-            location: 10,
+            date_of_birth: 5,
+            gender: 5,
+            location: 5,
             bio: 10,
-            social_links: 10
+            social_links: 10,
+            position: 10,
+            organization: 5,
+            skills: 10,
+            experience: 5,
+            documents: 5
         };
 
         let totalPoints = 0;
@@ -115,7 +124,8 @@ const customerController = {
                     customer_id: newCustomer.customer_id,
                     username: customerData.email,
                     password_hash: await bcrypt.hash(defaultPassword, 10),
-                    auth_provider: 'google'
+                    auth_provider: 'google',
+                    role_id: ROLE_IDS.customer
                 };
                 await User.create(userPayload);
                 logger.info('User account created for Google sign-in', {
@@ -130,6 +140,7 @@ const customerController = {
                     customer_id: newCustomer.customer_id,
                     username: customerData.email,
                     password_hash: await bcrypt.hash(password, 10),
+                    role_id: ROLE_IDS.customer
                 };
                 await User.create(userPayload);
                 logger.info('User account created for local sign-in', {
@@ -327,8 +338,8 @@ async verifyOwnershipOrDeveloper(req, res, next) {
       const { id } = req.params;
       const requestingUser = req.user;
   
-      // If user is a developer, skip ownership check
-      if (requestingUser.role_name === 'developer') {
+      // Administrators can update any customer profile
+      if (isAdministrator(requestingUser)) {
         return next();
       }
   
@@ -360,8 +371,8 @@ async verifyOwnershipOrDeveloper(req, res, next) {
       const { id } = req.params;
       const requestingUser = req.user;
   
-      // If user is a developer, skip ownership check
-      if (requestingUser.role_name === 'developer') {
+      // Administrators can update any customer profile
+      if (isAdministrator(requestingUser)) {
         return next();
       }
   
@@ -426,8 +437,8 @@ async verifyOwnershipOrDeveloper(req, res, next) {
         // Initialize update data
         const updateData = { ...body };
 
-        // Field restrictions for non-developers
-        if (requestingUser.role_name !== 'developer') {
+        // Field restrictions for regular users
+        if (!isAdministrator(requestingUser)) {
             // Define allowed fields for regular customers
             const allowedFields = [
                 'first_name',
@@ -1426,6 +1437,11 @@ customerController.getMyProfileDetails = async (req, res) => {
       location: profileDetails?.location ?? null,
       bio: profileDetails?.bio ?? null,
       social_links: profileDetails?.social_links ?? {},
+      position: profileDetails?.position ?? null,
+      organization: profileDetails?.organization ?? null,
+      skills: profileDetails?.skills ?? [],
+      experience: profileDetails?.experience ?? null,
+      documents: profileDetails?.documents ?? [],
       created_at: profileDetails?.created_at ?? null,
       updated_at: profileDetails?.updated_at ?? null,
       profile_completion_percentage: completionPercentage
@@ -1475,7 +1491,7 @@ customerController.updateMyProfileDetails = async (req, res) => {
     }
 
     // Separate customer fields from profile details fields
-    const profileDetailsFields = ['location', 'bio', 'social_links'];
+    const profileDetailsFields = ['location', 'bio', 'social_links', 'position', 'organization', 'skills', 'experience', 'documents'];
     const customerUpdateData = {};
     const profileDetailsUpdateData = {};
 
@@ -1536,8 +1552,8 @@ customerController.updateMyProfileDetails = async (req, res) => {
       }
     });
 
-    // Field restrictions for non-developers
-    if (requestingUser.role_name !== 'developer') {
+    // Field restrictions for regular users
+    if (!isAdministrator(requestingUser)) {
       const protectedFields = [
         'customer_type',
         'is_email_verified',
@@ -1573,6 +1589,11 @@ customerController.updateMyProfileDetails = async (req, res) => {
     profileDetailsUpdateData.location = body.location !== undefined ? body.location : (existingProfileDetails?.location ?? null);
     profileDetailsUpdateData.bio = body.bio !== undefined ? body.bio : (existingProfileDetails?.bio ?? null);
     profileDetailsUpdateData.social_links = socialLinks;
+    profileDetailsUpdateData.position = body.position !== undefined ? body.position : (existingProfileDetails?.position ?? null);
+    profileDetailsUpdateData.organization = body.organization !== undefined ? body.organization : (existingProfileDetails?.organization ?? null);
+    profileDetailsUpdateData.skills = body.skills !== undefined ? body.skills : (existingProfileDetails?.skills ?? null);
+    profileDetailsUpdateData.experience = body.experience !== undefined ? body.experience : (existingProfileDetails?.experience ?? null);
+    profileDetailsUpdateData.documents = body.documents !== undefined ? body.documents : (existingProfileDetails?.documents ?? null);
 
     // Update profile details if there are profile details fields to update
     const updatedProfileDetails = await CustomerProfileDetails.upsertByCustomerId(customerId, profileDetailsUpdateData);
@@ -1587,6 +1608,11 @@ customerController.updateMyProfileDetails = async (req, res) => {
       location: updatedProfileDetails.location ?? null,
       bio: updatedProfileDetails.bio ?? null,
       social_links: updatedProfileDetails.social_links ?? {},
+      position: updatedProfileDetails.position ?? null,
+      organization: updatedProfileDetails.organization ?? null,
+      skills: updatedProfileDetails.skills ?? [],
+      experience: updatedProfileDetails.experience ?? null,
+      documents: updatedProfileDetails.documents ?? [],
       created_at: updatedProfileDetails.created_at ?? null,
       updated_at: updatedProfileDetails.updated_at ?? null,
       profile_completion_percentage: completionPercentage
@@ -1643,6 +1669,11 @@ customerController.getProfileDetailsByCustomerId = async (req, res) => {
       location: profileDetails?.location ?? null,
       bio: profileDetails?.bio ?? null,
       social_links: profileDetails?.social_links ?? {},
+      position: profileDetails?.position ?? null,
+      organization: profileDetails?.organization ?? null,
+      skills: profileDetails?.skills ?? [],
+      experience: profileDetails?.experience ?? null,
+      documents: profileDetails?.documents ?? [],
       created_at: profileDetails?.created_at ?? null,
       updated_at: profileDetails?.updated_at ?? null
     };
@@ -1684,7 +1715,7 @@ customerController.updateProfileDetailsByCustomerId = async (req, res) => {
     }
 
     // Separate customer fields from profile details fields
-    const profileDetailsFields = ['location', 'bio', 'social_links'];
+    const profileDetailsFields = ['location', 'bio', 'social_links', 'position', 'organization', 'skills', 'experience', 'documents'];
     const customerUpdateData = {};
     const profileDetailsUpdateData = {};
 
@@ -1725,7 +1756,7 @@ customerController.updateProfileDetailsByCustomerId = async (req, res) => {
     }
 
     // Process customer fields
-    const allowedCustomerFields = requestingUser.role_name === 'developer' 
+    const allowedCustomerFields = isAdministrator(requestingUser) 
       ? ['first_name', 'last_name', 'profile_picture', 'date_of_birth', 'gender', 'phone', 'email']
       : ['first_name', 'last_name', 'profile_picture', 'date_of_birth', 'gender', 'phone'];
 
@@ -1740,8 +1771,8 @@ customerController.updateProfileDetailsByCustomerId = async (req, res) => {
       }
     });
 
-    // Field restrictions for non-developers
-    if (requestingUser.role_name !== 'developer') {
+    // Field restrictions for regular users
+    if (!isAdministrator(requestingUser)) {
       const protectedFields = [
         'customer_type',
         'is_email_verified',
@@ -1777,6 +1808,11 @@ customerController.updateProfileDetailsByCustomerId = async (req, res) => {
     profileDetailsUpdateData.location = body.location !== undefined ? body.location : (existingProfileDetails?.location ?? null);
     profileDetailsUpdateData.bio = body.bio !== undefined ? body.bio : (existingProfileDetails?.bio ?? null);
     profileDetailsUpdateData.social_links = socialLinks;
+    profileDetailsUpdateData.position = body.position !== undefined ? body.position : (existingProfileDetails?.position ?? null);
+    profileDetailsUpdateData.organization = body.organization !== undefined ? body.organization : (existingProfileDetails?.organization ?? null);
+    profileDetailsUpdateData.skills = body.skills !== undefined ? body.skills : (existingProfileDetails?.skills ?? null);
+    profileDetailsUpdateData.experience = body.experience !== undefined ? body.experience : (existingProfileDetails?.experience ?? null);
+    profileDetailsUpdateData.documents = body.documents !== undefined ? body.documents : (existingProfileDetails?.documents ?? null);
 
     // Update profile details if there are profile details fields to update
     const updatedProfileDetails = await CustomerProfileDetails.upsertByCustomerId(customerId, profileDetailsUpdateData);
@@ -1789,6 +1825,11 @@ customerController.updateProfileDetailsByCustomerId = async (req, res) => {
       location: updatedProfileDetails.location ?? null,
       bio: updatedProfileDetails.bio ?? null,
       social_links: updatedProfileDetails.social_links ?? {},
+      position: updatedProfileDetails.position ?? null,
+      organization: updatedProfileDetails.organization ?? null,
+      skills: updatedProfileDetails.skills ?? [],
+      experience: updatedProfileDetails.experience ?? null,
+      documents: updatedProfileDetails.documents ?? [],
       created_at: updatedProfileDetails.created_at ?? null,
       updated_at: updatedProfileDetails.updated_at ?? null
     };
@@ -1813,6 +1854,69 @@ customerController.updateProfileDetailsByCustomerId = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to update profile',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
+// Upload Document to S3
+customerController.uploadDocument = async (req, res) => {
+  try {
+    const customerId = req.user?.customer_id;
+    if (!customerId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded',
+        code: 'NO_FILE_UPLOADED'
+      });
+    }
+
+    const type = req.body.type || 'Other';
+    
+    // Upload file to S3 in the 'customer_documents/' folder
+    const s3Url = await uploadToS3(req.file, 'customer_documents/');
+
+    // Helper to format file size
+    const formatBytes = (bytes, decimals = 2) => {
+      if (!+bytes) return '0 Bytes';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    };
+
+    const formattedSize = formatBytes(req.file.size);
+    const docMetadata = {
+      name: req.file.originalname,
+      size: formattedSize,
+      date: new Date().toISOString().split('T')[0],
+      type: type,
+      url: s3Url
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'Document uploaded successfully',
+      data: docMetadata
+    });
+  } catch (err) {
+    logger.error('Failed to upload document:', {
+      error: err.message,
+      stack: err.stack,
+      customerId: req.user?.customer_id
+    });
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to upload document',
       code: 'SERVER_ERROR'
     });
   }

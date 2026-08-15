@@ -164,25 +164,18 @@ exports.checkCourseAccessFromToken = async (req, res) => {
       });
     }
 
-    // Optional (if self-study course exists): enforce that access code is for self-study
+    // Optional: enforce that access code is valid for a course
     const selfStudyCourse = await getSelfStudyCourse();
-    if (selfStudyCourse && lockedCode.course_id && Number(lockedCode.course_id) !== Number(selfStudyCourse.id)) {
-      await conn.rollback();
-      return res.status(400).json({
-        success: false,
-        code: 'ACCESS_CODE_WRONG_COURSE',
-        message: 'This access code is not valid for the self-study course.'
-      });
-    }
+    const targetCourseId = lockedCode.course_id || (selfStudyCourse ? selfStudyCourse.id : null);
 
     // Check if customer already registered
     const existingReg = await SelfStudyRegistration.findByCustomer(conn, customer.customer_id);
     if (existingReg) {
       // Keep new multi-course table in sync (best-effort)
-      if (selfStudyCourse) {
+      if (targetCourseId) {
         await CustomerCourseAccess.upsertActive(conn, {
           customer_id: customer.customer_id,
-          course_id: selfStudyCourse.id,
+          course_id: targetCourseId,
           // DB enum is: ('access_code','purchase','admin'). This legacy flow is still access-code based.
           granted_via: 'access_code',
           access_code_id: existingReg.access_code_id || lockedCode.id
@@ -360,10 +353,10 @@ exports.checkCourseAccessFromToken = async (req, res) => {
     });
 
     // Keep new multi-course table in sync (best-effort)
-    if (selfStudyCourse) {
+    if (targetCourseId) {
       await CustomerCourseAccess.upsertActive(conn, {
         customer_id: customer.customer_id,
-        course_id: selfStudyCourse.id,
+        course_id: targetCourseId,
         // DB enum is: ('access_code','purchase','admin'). This legacy flow is still access-code based.
         granted_via: 'access_code',
         access_code_id: lockedCode.id
@@ -1845,8 +1838,6 @@ exports.createDirectCourseAccessPayment = async (req, res) => {
   const conn = await db.getConnection();
   try {
     const customerId = req.user?.customer_id;
-    const amount = 90.00; // Fixed amount: $2000 USD
-    const currency = 'USD';
 
     if (!customerId) {
       return res.status(401).json({ 
@@ -1868,14 +1859,31 @@ exports.createDirectCourseAccessPayment = async (req, res) => {
     await conn.beginTransaction();
 
     // Check if customer already has active course access
-    const selfStudyCourse = await getSelfStudyCourse();
-    if (selfStudyCourse) {
+    const { course_id } = req.body || {};
+    let targetCourseId = course_id;
+    if (!targetCourseId) {
+      const selfStudyCourse = await getSelfStudyCourse();
+      targetCourseId = selfStudyCourse ? selfStudyCourse.id : null;
+    }
+
+    let amount = 90.00; // Default fallback amount
+    let currency = 'USD';
+
+    if (targetCourseId) {
+      const [courseRows] = await conn.query('SELECT price, currency FROM courses WHERE id = ?', [targetCourseId]);
+      if (courseRows.length > 0) {
+        amount = parseFloat(courseRows[0].price);
+        currency = courseRows[0].currency || 'USD';
+      }
+    }
+
+    if (targetCourseId) {
       const [existingAccess] = await conn.query(
         `SELECT status, expires_at 
          FROM customer_course_access 
          WHERE customer_id = ? AND course_id = ? AND status = 'active'
          LIMIT 1`,
-        [customerId, selfStudyCourse.id]
+        [customerId, targetCourseId]
       );
       
       if (existingAccess.length > 0 && (!existingAccess[0].expires_at || new Date(existingAccess[0].expires_at) > new Date())) {
@@ -1891,7 +1899,7 @@ exports.createDirectCourseAccessPayment = async (req, res) => {
     // IMPORTANT: payment_tracking.access_code_id is NOT NULL + FK'd.
     // Use a dedicated system access code for "direct purchase" flows.
     const systemCode = await AccessCode.ensureSystemDirectPurchaseCode(conn, {
-      course_id: selfStudyCourse?.id ?? null,
+      course_id: targetCourseId ?? null,
       code: 'DIRECT2000USD',
       payment_amount: amount,
       payment_currency: currency

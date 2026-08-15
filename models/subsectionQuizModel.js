@@ -8,18 +8,19 @@ const SubsectionQuiz = {
       `SELECT id AS question_id, prompt_html, sort_order
          FROM subsection_quiz_questions
         WHERE subsection_id = ?
-        ORDER BY ${randomize ? 'RAND()' : 'sort_order ASC, id ASC'}`,
+        ORDER BY ${randomize ? 'RANDOM()' : 'sort_order ASC, id ASC'}`,
       [subsection_id]
     );
     if (qs.length === 0) return [];
 
     const qIds = qs.map(q => q.question_id);
+    const placeholders = qIds.map(() => '?').join(',');
     const [opts] = await cx.query(
       `SELECT id AS option_id, question_id, text_html, is_correct, sort_order
          FROM subsection_quiz_options
-        WHERE question_id IN (?)
-        ORDER BY question_id ASC, ${randomize ? 'RAND()' : 'sort_order ASC, id ASC'}`,
-      [qIds]
+        WHERE question_id IN (${placeholders})
+        ORDER BY question_id ASC, ${randomize ? 'RANDOM()' : 'sort_order ASC, id ASC'}`,
+      qIds
     );
 
     const byQ = new Map(qs.map(q => [q.question_id, { ...q, options: [] }]));
@@ -45,12 +46,13 @@ async getQuestionsAdmin(subsection_id, conn = null) {
     if (qs.length === 0) return [];
 
     const qIds = qs.map(q => q.question_id);
+    const placeholders = qIds.map(() => '?').join(',');
     const [opts] = await cx.query(
       `SELECT id AS option_id, question_id, text_html, is_correct, sort_order
          FROM subsection_quiz_options
-        WHERE question_id IN (?)
+        WHERE question_id IN (${placeholders})
         ORDER BY question_id ASC, sort_order ASC, id ASC`,
-      [qIds]
+      qIds
     );
 
     const byQ = new Map(qs.map(q => [q.question_id, { ...q, options: [] }]));
@@ -143,12 +145,13 @@ async getQuestionsAdmin(subsection_id, conn = null) {
     if (filtered.length === 0) return { total: totalQuestions, correct: 0, score: 0 };
 
     const uniqQids = Array.from(new Set(filtered.map(p => p.question_id)));
+    const placeholders = uniqQids.map(() => '?').join(',');
     const [correctRows] = await cx.query(
       `SELECT id AS option_id
          FROM subsection_quiz_options
         WHERE is_correct = 1
-          AND question_id IN (?)`,
-      [uniqQids]
+          AND question_id IN (${placeholders})`,
+      uniqQids
     );
     const correctSet = new Set(correctRows.map(r => r.option_id));
 

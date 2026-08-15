@@ -1,10 +1,13 @@
 
 node_modules/
 .env
+!.env.example
 logs/
 dist/
 coverage/
 .DS_Store
+uploads/
+media-uploads/
 
 # Docs (local only)
 ADMIN_API_DOCUMENTATION.md

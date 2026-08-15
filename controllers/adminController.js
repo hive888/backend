@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Contest = require('../models/Contest');
 const ContestRegistration = require('../models/ContestRegistration');
 const TalentPoolRegistration = require('../models/talentPoolModel');
+const ProjectPool = require('../models/projectPoolModel');
 const AccessCode = require('../models/accessCodeModel');
 const PaymentTracking = require('../models/paymentTrackingModel');
 const ExitExamPayment = require('../models/ExitExamPayment');
@@ -74,9 +75,9 @@ const adminController = {
         db.query(`
           SELECT
             COUNT(*) AS total_registrations,
-            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-            SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
-            SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+            SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS approved,
+            SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS rejected,
             SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS new_today
           FROM talent_pool_registration
         `),
@@ -362,6 +363,9 @@ const adminController = {
         [id]
       );
 
+      const CustomerProfileDetails = require('../models/customerProfileDetailsModel');
+      const profileDetails = await CustomerProfileDetails.findByCustomerId(id);
+
       const [contestRegistrations] = await db.query(`
         SELECT cr.*, c.slug, c.description
         FROM contest_registrations cr
@@ -375,6 +379,7 @@ const adminController = {
         data: {
           customer,
           user: user[0] || null,
+          profile_details: profileDetails || null,
           contest_registrations: contestRegistrations || []
         }
       });
@@ -445,19 +450,51 @@ const adminController = {
         await Customer.update(id, customerUpdate);
       }
 
+      // Update customer profile details if provided
+      const CustomerProfileDetails = require('../models/customerProfileDetailsModel');
+      const profileFields = ['location', 'bio', 'social_links', 'position', 'organization', 'skills', 'experience', 'documents'];
+      const profileUpdate = {};
+      let hasProfileUpdate = false;
+      
+      profileFields.forEach(key => {
+        if (updateData[key] !== undefined) {
+          profileUpdate[key] = updateData[key];
+          hasProfileUpdate = true;
+        }
+      });
+      
+      if (hasProfileUpdate) {
+        const existingProfile = await CustomerProfileDetails.findByCustomerId(id);
+        const mergedUpdate = {
+          location: profileUpdate.location !== undefined ? profileUpdate.location : (existingProfile?.location ?? null),
+          bio: profileUpdate.bio !== undefined ? profileUpdate.bio : (existingProfile?.bio ?? null),
+          social_links: profileUpdate.social_links !== undefined ? profileUpdate.social_links : (existingProfile?.social_links ?? {}),
+          position: profileUpdate.position !== undefined ? profileUpdate.position : (existingProfile?.position ?? null),
+          organization: profileUpdate.organization !== undefined ? profileUpdate.organization : (existingProfile?.organization ?? null),
+          skills: profileUpdate.skills !== undefined ? profileUpdate.skills : (existingProfile?.skills ?? null),
+          experience: profileUpdate.experience !== undefined ? profileUpdate.experience : (existingProfile?.experience ?? null),
+          documents: profileUpdate.documents !== undefined ? profileUpdate.documents : (existingProfile?.documents ?? null),
+        };
+        await CustomerProfileDetails.upsertByCustomerId(id, mergedUpdate);
+      }
+
       // Get updated customer data
       const updated = await Customer.findById(id);
+      const updatedProfile = await CustomerProfileDetails.findByCustomerId(id);
 
       logger.info('Admin updated customer', {
         adminId: req.user.user_id,
         customerId: id,
-        updates: Object.keys(customerUpdate)
+        updates: [...Object.keys(customerUpdate), ...(hasProfileUpdate ? Object.keys(profileUpdate) : [])]
       });
 
       return res.status(200).json({
         success: true,
         message: 'Customer updated successfully',
-        data: updated
+        data: {
+          ...updated,
+          profile_details: updatedProfile
+        }
       });
     } catch (err) {
       logger.error('Admin update customer error', {
@@ -528,8 +565,14 @@ const adminController = {
         search = ''
       } = req.query;
 
+      let statusVal = undefined;
+      if (status === 'pending') statusVal = 0;
+      else if (status === 'approved') statusVal = 1;
+      else if (status === 'rejected') statusVal = 2;
+      else if (status === 'shortlisted') statusVal = 3;
+
       const filters = {
-        status: status || undefined,
+        status: statusVal,
         country: country || undefined,
         search: search || undefined
       };
@@ -541,10 +584,19 @@ const adminController = {
       const offset = (parseInt(page) - 1) * parseInt(limit);
       const paginatedRegistrations = registrations.slice(offset, offset + parseInt(limit));
 
+      // Map status numbers back to string tags for UI compatibility
+      const mappedRegistrations = paginatedRegistrations.map(reg => {
+        let statusStr = 'pending';
+        if (reg.status === 1) statusStr = 'approved';
+        else if (reg.status === 2) statusStr = 'rejected';
+        else if (reg.status === 3) statusStr = 'shortlisted';
+        return { ...reg, status: statusStr };
+      });
+
       return res.status(200).json({
         success: true,
         data: {
-          registrations: paginatedRegistrations,
+          registrations: mappedRegistrations,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -591,7 +643,12 @@ const adminController = {
         });
       }
 
-      await TalentPoolRegistration.updateStatus(id, status);
+      let statusVal = 0;
+      if (status === 'approved') statusVal = 1;
+      else if (status === 'rejected') statusVal = 2;
+      else if (status === 'shortlisted') statusVal = 3;
+
+      await TalentPoolRegistration.updateStatus(id, statusVal);
 
       logger.info('Admin updated talent pool status', {
         adminId: req.user.user_id,
@@ -634,6 +691,126 @@ const adminController = {
       return res.status(500).json({
         success: false,
         error: 'Failed to retrieve talent pool statistics',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Project Pool Submissions
+   * GET /api/admin/project-pool
+   */
+  async getProjectPoolQueue(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        status = '',
+        category = ''
+      } = req.query;
+
+      let statusVal = undefined;
+      if (status === 'pending') statusVal = 0;
+      else if (status === 'approved') statusVal = 1;
+      else if (status === 'completed') statusVal = 2;
+      else if (status === 'rejected') statusVal = 3;
+
+      const filters = {
+        status: statusVal,
+        category: category || undefined
+      };
+
+      const projects = await ProjectPool.findAllProjects(filters);
+      const total = projects.length;
+
+      // Apply pagination
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      const paginatedProjects = projects.slice(offset, offset + parseInt(limit));
+
+      // Map status numbers back to string tags for UI compatibility
+      const mappedProjects = paginatedProjects.map(proj => {
+        let statusStr = 'pending';
+        if (proj.status === 1) statusStr = 'approved';
+        else if (proj.status === 2) statusStr = 'completed';
+        else if (proj.status === 3) statusStr = 'rejected';
+        return { ...proj, status: statusStr };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          registrations: mappedProjects,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            total_pages: Math.ceil(total / parseInt(limit))
+          }
+        }
+      });
+    } catch (err) {
+      logger.error('Admin get project pool queue error', {
+        error: err.message
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve project pool queue',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Update Project Pool Listing Status
+   * PATCH /api/admin/project-pool/:id/status
+   */
+  async updateProjectPoolStatus(req, res) {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || !['pending', 'approved', 'rejected', 'completed'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid status. Must be: pending, approved, completed, or rejected',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      const project = await ProjectPool.findProjectById(id);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project listing not found',
+          code: 'NOT_FOUND'
+        });
+      }
+
+      let statusVal = 0;
+      if (status === 'approved') statusVal = 1;
+      else if (status === 'completed') statusVal = 2;
+      else if (status === 'rejected') statusVal = 3;
+
+      await ProjectPool.updateProjectStatus(id, statusVal);
+
+      logger.info('Admin updated project pool status', {
+        adminId: req.user.user_id,
+        projectId: id,
+        newStatus: status
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Project status updated successfully'
+      });
+    } catch (err) {
+      logger.error('Admin update project pool status error', {
+        error: err.message,
+        projectId: req.params.id
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update project status',
         code: 'SERVER_ERROR'
       });
     }
@@ -736,17 +913,21 @@ const adminController = {
       const periodDays = parseInt(period);
 
       // Customer growth analytics
-      const [customerGrowth] = await db.query(`
+      const [customerGrowthRows] = await db.query(`
         SELECT
           DATE(created_at) AS date,
-          COUNT(*) AS count,
-          SUM(COUNT(*)) OVER (ORDER BY DATE(created_at)) AS cumulative
+          COUNT(*) AS count
         FROM customers
         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
           AND deleted_at IS NULL
         GROUP BY DATE(created_at)
         ORDER BY date ASC
       `, [periodDays]);
+      let running = 0;
+      const customerGrowth = (customerGrowthRows || []).map((row) => {
+        running += Number(row.count) || 0;
+        return { ...row, cumulative: running };
+      });
 
       // Revenue analytics (removed - orders functionality disabled)
       const revenueAnalytics = [];
@@ -2201,6 +2382,262 @@ const adminController = {
       return res.status(500).json({
         success: false,
         error: 'Failed to delete event',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Private Groups List
+   * GET /api/admin/private-groups
+   */
+  async getPrivateGroups(req, res) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const jsonPath = path.join(__dirname, '../data/private-groups.json');
+      
+      if (!fs.existsSync(jsonPath)) {
+        return res.status(200).json({ success: true, data: [] });
+      }
+      
+      const fileData = fs.readFileSync(jsonPath, 'utf8');
+      const groups = JSON.parse(fileData);
+      
+      return res.status(200).json({
+        success: true,
+        data: groups
+      });
+    } catch (err) {
+      logger.error('Admin get private groups error', { error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve private groups',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Get Private Group by ID
+   * GET /api/admin/private-groups/:id
+   */
+  async getPrivateGroupById(req, res) {
+    try {
+      const { id } = req.params;
+      const fs = require('fs');
+      const path = require('path');
+      const jsonPath = path.join(__dirname, '../data/private-groups.json');
+      
+      if (!fs.existsSync(jsonPath)) {
+        return res.status(404).json({ success: false, error: 'Group not found' });
+      }
+      
+      const fileData = fs.readFileSync(jsonPath, 'utf8');
+      const groups = JSON.parse(fileData);
+      const group = groups.find(g => g.id === id);
+      
+      if (!group) {
+        return res.status(404).json({
+          success: false,
+          error: 'Group not found',
+          code: 'GROUP_NOT_FOUND'
+        });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        data: group
+      });
+    } catch (err) {
+      logger.error('Admin get private group details error', { error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve group details',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Create Private Group
+   * POST /api/admin/private-groups
+   */
+  async createPrivateGroup(req, res) {
+    try {
+      const { name, category, type, description, price, currency } = req.body;
+      
+      if (!name || !category || !type) {
+        return res.status(400).json({
+          success: false,
+          error: 'Name, category, and type are required',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+      
+      const fs = require('fs');
+      const path = require('path');
+      const jsonPath = path.join(__dirname, '../data/private-groups.json');
+      
+      let groups = [];
+      if (fs.existsSync(jsonPath)) {
+        const fileData = fs.readFileSync(jsonPath, 'utf8');
+        groups = JSON.parse(fileData);
+      }
+      
+      const newGroup = {
+        id: `g_${Date.now()}`,
+        name,
+        category,
+        type,
+        description: description || '',
+        price: price !== undefined ? Number(price) : 0,
+        currency: currency || 'USD',
+        memberCount: 0,
+        members: [],
+        posts: [],
+        announcements: [],
+        resources: []
+      };
+      
+      groups.push(newGroup);
+      fs.writeFileSync(jsonPath, JSON.stringify(groups, null, 2), 'utf8');
+      
+      logger.info('Admin created private group', {
+        adminId: req.user.user_id,
+        groupId: newGroup.id,
+        name
+      });
+      
+      return res.status(201).json({
+        success: true,
+        message: 'Private group created successfully',
+        data: newGroup
+      });
+    } catch (err) {
+      logger.error('Admin create private group error', { error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create private group',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Update Private Group
+   * PUT /api/admin/private-groups/:id
+   */
+  async updatePrivateGroup(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+      
+      const fs = require('fs');
+      const path = require('path');
+      const jsonPath = path.join(__dirname, '../data/private-groups.json');
+      
+      if (!fs.existsSync(jsonPath)) {
+        return res.status(404).json({ success: false, error: 'Group not found' });
+      }
+      
+      const fileData = fs.readFileSync(jsonPath, 'utf8');
+      let groups = JSON.parse(fileData);
+      const groupIndex = groups.findIndex(g => g.id === id);
+      
+      if (groupIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          error: 'Group not found',
+          code: 'GROUP_NOT_FOUND'
+        });
+      }
+      
+      // Update fields
+      const group = groups[groupIndex];
+      if (updateData.name) group.name = updateData.name;
+      if (updateData.category) group.category = updateData.category;
+      if (updateData.type) group.type = updateData.type;
+      if (updateData.description !== undefined) group.description = updateData.description;
+      if (updateData.price !== undefined) group.price = Number(updateData.price);
+      if (updateData.currency) group.currency = updateData.currency;
+      
+      // Handle members / posts / resources updates if provided (e.g. for members deletion or moderation)
+      if (updateData.members) {
+        group.members = updateData.members;
+        group.memberCount = updateData.members.length;
+      }
+      if (updateData.posts) group.posts = updateData.posts;
+      if (updateData.announcements) group.announcements = updateData.announcements;
+      if (updateData.resources) group.resources = updateData.resources;
+
+      groups[groupIndex] = group;
+      fs.writeFileSync(jsonPath, JSON.stringify(groups, null, 2), 'utf8');
+      
+      logger.info('Admin updated private group', {
+        adminId: req.user.user_id,
+        groupId: id
+      });
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Private group updated successfully',
+        data: group
+      });
+    } catch (err) {
+      logger.error('Admin update private group error', { error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update private group',
+        code: 'SERVER_ERROR'
+      });
+    }
+  },
+
+  /**
+   * Delete Private Group
+   * DELETE /api/admin/private-groups/:id
+   */
+  async deletePrivateGroup(req, res) {
+    try {
+      const { id } = req.params;
+      const fs = require('fs');
+      const path = require('path');
+      const jsonPath = path.join(__dirname, '../data/private-groups.json');
+      
+      if (!fs.existsSync(jsonPath)) {
+        return res.status(404).json({ success: false, error: 'Group not found' });
+      }
+      
+      const fileData = fs.readFileSync(jsonPath, 'utf8');
+      let groups = JSON.parse(fileData);
+      const groupExists = groups.some(g => g.id === id);
+      
+      if (!groupExists) {
+        return res.status(404).json({
+          success: false,
+          error: 'Group not found',
+          code: 'GROUP_NOT_FOUND'
+        });
+      }
+      
+      groups = groups.filter(g => g.id !== id);
+      fs.writeFileSync(jsonPath, JSON.stringify(groups, null, 2), 'utf8');
+      
+      logger.info('Admin deleted private group', {
+        adminId: req.user.user_id,
+        groupId: id
+      });
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Private group deleted successfully'
+      });
+    } catch (err) {
+      logger.error('Admin delete private group error', { error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to delete private group',
         code: 'SERVER_ERROR'
       });
     }

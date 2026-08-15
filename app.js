@@ -12,6 +12,7 @@ const customerRoutes = require('./routes/customerRoutes');
 const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
 const talentPoolRoutes = require('./routes/talentPoolRoutes');
+const projectPoolRoutes = require('./routes/projectPoolRoutes');
 const courseAccessRoutes = require('./routes/courseAccessRoutes');
 const subsectionRoutes = require('./routes/subsectionQuizRoutes');
 const contestRoutes = require('./routes/contestRoutes');
@@ -23,11 +24,20 @@ const adminRoutes = require('./routes/adminRoutes');
 const academyRoutes = require('./routes/academyRoutes');
 const telegramRoutes = require('./routes/telegramRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
+const privateGroupRoutes = require('./routes/privateGroupRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const eventRoutes = require('./routes/eventRoutes');
 const authMiddleware = require('./middleware/authMiddleware');
 const logger = require('./utils/logger');
 const app = express();
+app.set('trust proxy', 1);
+
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`[DEBUG] Received ${req.method} request to ${req.originalUrl || req.url}`);
+    next();
+  });
+}
 
 // 1. Body parsers
 // Stripe webhooks require the raw request body for signature verification.
@@ -88,11 +98,14 @@ app.use(cookieParser());
 // 4. Security Headers
 app.use(helmet({
   crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  if (!String(req.originalUrl || '').startsWith('/api/uploads')) {
+    res.setHeader('X-Frame-Options', 'DENY');
+  }
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Feature-Policy', "geolocation 'none'; microphone 'none'; camera 'none'");
@@ -101,14 +114,23 @@ app.use((req, res, next) => {
 });
 
 // 5. CORS Configuration
-const allowedOrigins = [
+const defaultOrigins = [
   'https://admin.hive888.org',
   'https://hive888.org',
   'http://admin.hive888.org',
   'https://hub.hive888.org',
   'http://hub.hive888.org',
-  'http://hive888.org'
+  'https://www.hive888.org',
+  'http://hive888.org',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002'
 ];
+const envOrigins = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -156,6 +178,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/talent-pool', talentPoolRoutes);
+app.use('/api/projects', projectPoolRoutes);
 app.use('/api/course-access', courseAccessRoutes);
 app.use('/api/subsection-quizzes', subsectionRoutes);
 app.use('/api/contest', contestRoutes);
@@ -167,9 +190,25 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/academy', academyRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/private-groups', privateGroupRoutes);
+app.use('/api/alumni', require('./routes/alumniRoutes'));
+app.use('/api/partners', require('./routes/partnerRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/audit', auditRoutes);
 app.use('/api/events', eventRoutes);
-app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadStaticHeaders = (req, res, next) => {
+  res.removeHeader('X-Frame-Options');
+  const frameAncestors = ["'self'", ...allowedOrigins.filter((origin) => origin.startsWith('http'))].join(' ');
+  res.setHeader('Content-Security-Policy', `frame-ancestors ${frameAncestors}`);
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+};
+app.use(
+  '/api/uploads',
+  uploadStaticHeaders,
+  express.static(path.join(__dirname, 'media-uploads')),
+  express.static(path.join(__dirname, 'uploads'))
+);
 
 // 9.5. Simple built-in Google Auth test page (dev utility)
 // Visit: GET /tools/google-auth
@@ -243,15 +282,14 @@ app.get('/api/health', async (req, res) => {
     try {
       const authMiddleware = require('./middleware/authMiddleware');
       const redisClient = authMiddleware.redisClient;
-      
-      if (!redisClient) {
+
+      if (!redisClient || !redisClient.isOpen) {
         health.services.redis = {
           status: 'unhealthy',
           message: 'Redis client not initialized'
         };
         health.status = 'degraded';
       } else {
-        // Try to ping Redis - this is the most reliable check
         await redisClient.ping();
         health.services.redis = {
           status: 'healthy',

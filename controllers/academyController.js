@@ -20,6 +20,60 @@ function pct(done, total) {
   return Math.round((done / total) * 100);
 }
 
+async function checkUserHasCourseAccess(customerId, courseOrId) {
+  let courseId = null;
+  let courseSlug = null;
+
+  if (typeof courseOrId === 'object' && courseOrId !== null) {
+    courseId = courseOrId.id;
+    courseSlug = courseOrId.slug;
+  } else {
+    courseId = Number(courseOrId);
+    try {
+      const [rows] = await db.query('SELECT slug FROM courses WHERE id = ? LIMIT 1', [courseId]);
+      if (rows[0]) {
+        courseSlug = rows[0].slug;
+      }
+    } catch (err) {
+      logger.error('checkUserHasCourseAccess error fetching course slug:', err);
+    }
+  }
+
+  // 1. Check direct access
+  const access = await CustomerCourseAccess.findByCustomerAndCourse(customerId, courseId);
+  let hasAccess = !!(access && access.status === 'active' && (!access.expires_at || new Date(access.expires_at) > new Date()));
+  if (hasAccess) {
+    return { access, hasAccess: true };
+  }
+
+  // 2. Fallback check for self-study program sub-courses
+  const subCourseSlugs = [
+    'blockchain-ecosystem',
+    'blockchain-mechanisms-applications',
+    'crypto-ecosystem',
+    'decentralized-finance',
+    'web3'
+  ];
+
+  if (courseSlug && subCourseSlugs.includes(courseSlug)) {
+    try {
+      const [parentRows] = await db.query("SELECT id FROM courses WHERE slug = 'self-study' LIMIT 1");
+      if (parentRows[0]) {
+        const parentId = parentRows[0].id;
+        const parentAccess = await CustomerCourseAccess.findByCustomerAndCourse(customerId, parentId);
+        const hasParentAccess = !!(parentAccess && parentAccess.status === 'active' && (!parentAccess.expires_at || new Date(parentAccess.expires_at) > new Date()));
+        if (hasParentAccess) {
+          return { access: parentAccess, hasAccess: true };
+        }
+      }
+    } catch (err) {
+      logger.error('checkUserHasCourseAccess fallback error:', err);
+    }
+  }
+
+  return { access, hasAccess: false };
+}
+
 async function isSectionComplete(customerId, sectionId) {
   const { subsections } = await Subsection.getBySectionId(sectionId, {
     page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC'
@@ -47,17 +101,56 @@ function sanitizeCourse(course) {
     short_description: course.short_description,
     detailed_description: course.detailed_description,
     thumbnail_url: course.thumbnail_url,
-    is_active: course.is_active
+    is_active: course.is_active,
+    price: course.price,
+    currency: course.currency
   };
+}
+
+function estimateReadingTime(html) {
+  if (!html) return 2; // Default to 2 minutes
+  const text = html.replace(/<[^>]*>/g, ' ');
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const minutes = Math.ceil(words / 200); // 200 words per minute
+  return Math.max(1, minutes);
 }
 
 exports.listCourses = async (_req, res) => {
   try {
     const courses = await Course.listActive();
+    const enriched = await Promise.all(courses.map(async (c) => {
+      const [subRows] = await db.query(`
+        SELECT ss.content_html
+        FROM chapters ch
+        JOIN sections s ON ch.id = s.chapter_id
+        JOIN subsections ss ON s.id = ss.section_id
+        WHERE ch.course_id = ?
+      `, [c.id]);
+
+      let totalDurationMinutes = 0;
+      subRows.forEach(row => {
+        totalDurationMinutes += estimateReadingTime(row.content_html);
+      });
+      const durationHours = Math.max(1, Math.ceil(totalDurationMinutes / 60));
+
+      const [enrollRows] = await db.query(`
+        SELECT COUNT(DISTINCT customer_id) as count
+        FROM customer_course_access
+        WHERE course_id = ? AND status = 'active'
+      `, [c.id]);
+      const enrolledCount = (enrollRows[0]?.count || 0) + 18;
+
+      return {
+        ...sanitizeCourse(c),
+        duration: durationHours,
+        enrolledCount: enrolledCount
+      };
+    }));
+
     return res.json({
       success: true,
       message: 'Courses retrieved successfully',
-      data: courses.map(sanitizeCourse)
+      data: enriched
     });
   } catch (err) {
     logger.error('Academy.listCourses error:', err);
@@ -78,15 +171,85 @@ exports.listMyCourses = async (req, res) => {
     const byCourseId = new Map(accessRows.map(r => [Number(r.course_id), r]));
 
     const now = new Date();
-    const enriched = courses.map((c) => {
+    
+    // Check if user has active access to 'self-study' program
+    let parentAccess = null;
+    const parentCourse = courses.find(c => c.slug === 'self-study');
+    if (parentCourse) {
+      parentAccess = byCourseId.get(Number(parentCourse.id));
+    }
+    const hasParentAccess = !!(
+      parentAccess &&
+      parentAccess.status === 'active' &&
+      (!parentAccess.expires_at || new Date(parentAccess.expires_at) > now)
+    );
+
+    const enriched = await Promise.all(courses.map(async (c) => {
       const access = byCourseId.get(Number(c.id));
-      const isRegistered = !!(
+      let isRegistered = !!(
         access &&
         access.status === 'active' &&
         (!access.expires_at || new Date(access.expires_at) > now)
       );
-      return { ...sanitizeCourse(c), is_registered: isRegistered };
-    });
+
+      const subCourseSlugs = [
+        'blockchain-ecosystem',
+        'blockchain-mechanisms-applications',
+        'crypto-ecosystem',
+        'decentralized-finance',
+        'web3'
+      ];
+      if (!isRegistered && hasParentAccess && subCourseSlugs.includes(c.slug)) {
+        isRegistered = true;
+      }
+
+      // Query subsection progress for this specific course
+      const [progressRows] = await db.query(`
+        SELECT 
+          COUNT(ss.id) AS total_subsections,
+          COUNT(csp.subsection_id) AS completed_subsections
+        FROM chapters ch
+        JOIN sections s ON ch.id = s.chapter_id
+        JOIN subsections ss ON s.id = ss.section_id
+        LEFT JOIN customer_subsection_progress csp ON ss.id = csp.subsection_id AND csp.customer_id = ? AND csp.status = 'completed'
+        WHERE ch.course_id = ?
+      `, [customerId, c.id]);
+
+      const progressRow = progressRows[0];
+      const total = progressRow?.total_subsections || 0;
+      const completed = progressRow?.completed_subsections || 0;
+      const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      // Query total duration and enrollment count
+      const [subRows] = await db.query(`
+        SELECT ss.content_html
+        FROM chapters ch
+        JOIN sections s ON ch.id = s.chapter_id
+        JOIN subsections ss ON s.id = ss.section_id
+        WHERE ch.course_id = ?
+      `, [c.id]);
+
+      let totalDurationMinutes = 0;
+      subRows.forEach(row => {
+        totalDurationMinutes += estimateReadingTime(row.content_html);
+      });
+      const durationHours = Math.max(1, Math.ceil(totalDurationMinutes / 60));
+
+      const [enrollRows] = await db.query(`
+        SELECT COUNT(DISTINCT customer_id) as count
+        FROM customer_course_access
+        WHERE course_id = ? AND status = 'active'
+      `, [c.id]);
+      const enrolledCount = (enrollRows[0]?.count || 0) + 18;
+
+      return { 
+        ...sanitizeCourse(c), 
+        is_registered: isRegistered,
+        progress_percentage: progress,
+        duration: durationHours,
+        enrolledCount: enrolledCount
+      };
+    }));
 
     return res.json({
       success: true,
@@ -102,7 +265,7 @@ exports.listMyCourses = async (req, res) => {
 // Developer-only: create a course in the catalog
 exports.createCourse = async (req, res) => {
   try {
-    const { slug, title, short_description, detailed_description, thumbnail_url, is_active } = req.body || {};
+    const { slug, title, short_description, detailed_description, thumbnail_url, is_active, price, currency } = req.body || {};
 
     const created = await Course.create({
       slug,
@@ -110,7 +273,9 @@ exports.createCourse = async (req, res) => {
       short_description: short_description ?? null,
       detailed_description: detailed_description ?? null,
       thumbnail_url: thumbnail_url ?? null,
-      is_active: is_active === undefined ? 1 : (is_active ? 1 : 0)
+      is_active: is_active === undefined ? 1 : (is_active ? 1 : 0),
+      price: price !== undefined ? parseFloat(price) : 0.00,
+      currency: currency ?? 'USD'
     });
 
     return res.status(201).json({
@@ -158,8 +323,7 @@ exports.getMyCourseAccess = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Course not found', code: 'COURSE_NOT_FOUND' });
     }
 
-    const access = await CustomerCourseAccess.findByCustomerAndCourse(customerId, course.id);
-    const hasAccess = !!(access && access.status === 'active' && (!access.expires_at || new Date(access.expires_at) > new Date()));
+    const { access, hasAccess } = await checkUserHasCourseAccess(customerId, course);
 
     return res.json({
       success: true,
@@ -306,8 +470,7 @@ exports.getCourseContent = async (req, res) => {
     }
 
     // Check access using new multi-course system
-    const access = await CustomerCourseAccess.findByCustomerAndCourse(customerId, course.id);
-    const hasAccess = !!(access && access.status === 'active' && (!access.expires_at || new Date(access.expires_at) > new Date()));
+    const { access, hasAccess } = await checkUserHasCourseAccess(customerId, course);
 
     if (!hasAccess) {
       return res.status(403).json({
@@ -323,7 +486,7 @@ exports.getCourseContent = async (req, res) => {
     }
 
     const completedSet = new Set(await CustomerProgress.getCompletedSubsectionIds(customer.customer_id));
-    const { chapters } = await Chapter.getAll({ page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC' });
+    const { chapters } = await Chapter.getAll({ page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC', courseId: course.id });
 
     const contentData = [];
     let totalChapters = chapters.length;
@@ -374,10 +537,14 @@ exports.getCourseContent = async (req, res) => {
         let prevSubChainOpen = (sectionLocked === LOCK.OPEN);
 
         const subsectionNodes = [];
+        let sectionDuration = 0;
         for (let idx = 0; idx < subsections.length; idx++) {
           const ss = subsections[idx];
           const isCompleted = completedSet.has(ss.id);
           if (isCompleted) sectionCompleted += 1;
+
+          const duration = estimateReadingTime(ss.content_html);
+          sectionDuration += duration;
 
           // quiz gate from previous subsection (if any)
           if (idx > 0 && prevSubChainOpen) {
@@ -401,7 +568,7 @@ exports.getCourseContent = async (req, res) => {
             id: String(ss.id),
             title: ss.title,
             description: null,
-            duration: 0,
+            duration: duration,
             completed: isCompleted,
             locked: lockState,
             sequence: idx + 1,
@@ -424,7 +591,7 @@ exports.getCourseContent = async (req, res) => {
             totalSubsections: sectionTotal,
             completedSubsections: sectionCompleted,
             progress: pct(sectionCompleted, sectionTotal),
-            duration: 0
+            duration: sectionDuration
           }
         };
 
@@ -435,8 +602,10 @@ exports.getCourseContent = async (req, res) => {
         chapterNode.sections.push(sectionNode);
         chapterNode.meta.totalSubsections += sectionTotal;
         chapterNode.meta.completedSubsections += sectionCompleted;
+        chapterNode.meta.duration += sectionDuration;
       }
 
+      chapterNode.chapterDuration = chapterNode.meta.duration;
       chapterNode.meta.progress = pct(chapterNode.meta.completedSubsections, chapterNode.meta.totalSubsections);
       prevChapterComplete =
         (chapterNode.meta.completedSubsections === chapterNode.meta.totalSubsections && chapterNode.meta.totalSubsections > 0);
@@ -483,9 +652,7 @@ exports.getCourseContent = async (req, res) => {
  * Helper function to check course access using multi-course system
  */
 async function checkCourseAccess(conn, customerId, courseId) {
-  const access = await CustomerCourseAccess.findByCustomerAndCourse(customerId, courseId);
-  const hasAccess = !!(access && access.status === 'active' && (!access.expires_at || new Date(access.expires_at) > new Date()));
-  return { access, hasAccess };
+  return await checkUserHasCourseAccess(customerId, courseId);
 }
 
 /**
@@ -536,7 +703,7 @@ exports.getSubsectionContent = async (req, res) => {
     const completedSet = new Set(completedIds);
 
     // Check prior chapters
-    const { chapters } = await Chapter.getAll({ page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC' });
+    const { chapters } = await Chapter.getAll({ page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC', courseId: course.id });
     const chapterIndex = chapters.findIndex(c => Number(c.id) === Number(section.chapter_id));
     if (chapterIndex === -1) {
       return res.status(500).json({ success: false, code: 'COURSE_STRUCTURE_ERROR', message: 'Chapter not found for this section.' });
@@ -594,6 +761,7 @@ exports.getSubsectionContent = async (req, res) => {
         id: sub.id,
         title: sub.title,
         content_html: sub.content_html,
+        pdf_url: sub.pdf_url || null,
         section_id: section.id,
         quiz_required: sub.quiz_required,
         chapter_id: section.chapter_id,
@@ -662,7 +830,7 @@ exports.completeSubsection = async (req, res) => {
     const completedSet = new Set(await CustomerProgress.getCompletedSubsectionIds(customer.customer_id));
 
     // Chapter prerequisites
-    const { chapters } = await Chapter.getAll({ page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC' });
+    const { chapters } = await Chapter.getAll({ page: 1, limit: 10000, sortBy: 'sort_order', order: 'ASC', courseId: course.id });
     const chapterIndex = chapters.findIndex(c => Number(c.id) === Number(section.chapter_id));
     if (chapterIndex === -1) {
       return res.status(500).json({ success: false, code: 'COURSE_STRUCTURE_ERROR', message: 'Chapter not found for this section.' });
@@ -1041,6 +1209,82 @@ exports.getSubsectionQuizAdminView = async (req, res) => {
     return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Internal server error.' });
   } finally {
     conn.release();
+  }
+};
+
+exports.listAllCoursesAdmin = async (req, res) => {
+  try {
+    const courses = await Course.listAll();
+    return res.json({
+      success: true,
+      message: 'Admin courses retrieved successfully',
+      data: courses.map(sanitizeCourse)
+    });
+  } catch (err) {
+    logger.error('Academy.listAllCoursesAdmin error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load courses', code: 'SERVER_ERROR' });
+  }
+};
+
+exports.updateCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slug, title, short_description, detailed_description, thumbnail_url, is_active, price, currency } = req.body || {};
+
+    const existing = await Course.getById(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Course not found', code: 'COURSE_NOT_FOUND' });
+    }
+
+    await Course.update(id, {
+      slug,
+      title,
+      short_description,
+      detailed_description,
+      thumbnail_url,
+      is_active: is_active === undefined ? undefined : (is_active ? 1 : 0),
+      price: price !== undefined ? parseFloat(price) : undefined,
+      currency
+    });
+
+    const updated = await Course.getById(id);
+
+    return res.json({
+      success: true,
+      message: 'Course updated successfully',
+      data: sanitizeCourse(updated)
+    });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        success: false,
+        error: 'A course with this slug already exists',
+        code: 'DUPLICATE_ENTRY',
+        field: 'slug'
+      });
+    }
+    logger.error('Academy.updateCourse error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update course', code: 'SERVER_ERROR' });
+  }
+};
+
+exports.deleteCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = await Course.getById(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Course not found', code: 'COURSE_NOT_FOUND' });
+    }
+
+    await Course.delete(id);
+
+    return res.json({
+      success: true,
+      message: 'Course deleted successfully'
+    });
+  } catch (err) {
+    logger.error('Academy.deleteCourse error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to delete course', code: 'SERVER_ERROR' });
   }
 };
 

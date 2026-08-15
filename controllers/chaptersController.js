@@ -4,12 +4,15 @@ const logger = require('../utils/logger');
 class ChaptersController {
   async getAllChapters(req, res) {
     try {
-      const { page = 1, limit = 200, sortBy = 'sort_order', order = 'ASC' } = req.query;
+      const { page = 1, limit = 200, sortBy = 'sort_order', order = 'ASC', courseId = null, course_id = null } = req.query;
+      const parsedCourseId = courseId || course_id ? parseInt(courseId || course_id) : null;
+
       const { chapters, total } = await Chapter.getAll({
         page: parseInt(page),
         limit: parseInt(limit),
-        sortBy,
-        order
+        sortBy: sortBy,
+        order: order,
+        courseId: parsedCourseId
       });
 
       return res.json({
@@ -67,7 +70,7 @@ class ChaptersController {
 
   async createChapter(req, res) {
     try {
-      const { title, sort_order = 0 } = req.body;
+      const { title, sort_order = 0, course_id } = req.body;
 
       // Basic validation
       if (!title) {
@@ -79,7 +82,8 @@ class ChaptersController {
 
       const chapterId = await Chapter.create({
         title,
-        sort_order
+        sort_order: parseInt(sort_order),
+        course_id: course_id ? parseInt(course_id) : null
       });
 
       return res.status(201).json({
@@ -111,7 +115,7 @@ class ChaptersController {
   async updateChapter(req, res) {
     try {
       const { id } = req.params;
-      const { title, sort_order } = req.body;
+      const { title, sort_order, course_id } = req.body;
 
       // Check if chapter exists
       const chapter = await Chapter.getById(id);
@@ -124,7 +128,8 @@ class ChaptersController {
 
       const updated = await Chapter.update(id, {
         title,
-        sort_order
+        sort_order: sort_order !== undefined ? parseInt(sort_order) : undefined,
+        course_id: course_id !== undefined ? (course_id ? parseInt(course_id) : null) : undefined
       });
 
       return res.json({

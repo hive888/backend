@@ -34,10 +34,17 @@ const academyValidator = {
       .isString().withMessage('detailed_description must be a string'),
     body('thumbnail_url')
       .optional()
-      .isURL().withMessage('thumbnail_url must be a valid URL'),
+      .isString().withMessage('thumbnail_url must be a string'),
     body('is_active')
       .optional()
-      .isBoolean().withMessage('is_active must be boolean')
+      .isBoolean().withMessage('is_active must be boolean'),
+    body('price')
+      .optional()
+      .isNumeric().withMessage('price must be a number'),
+    body('currency')
+      .optional()
+      .isString().withMessage('currency must be a string')
+      .isLength({ max: 10 }).withMessage('currency must be less than 10 characters')
   ],
 };
 

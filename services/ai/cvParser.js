@@ -105,24 +105,26 @@ async function analyzeCV(cvUrl, cvFilePath = null, talentId = null) {
 async function extractTextFromCV(cvUrl, cvFilePath) {
   let fileBuffer = null;
 
-  // If file path provided, read from filesystem
-  if (cvFilePath) {
+  // If file path provided and not a URL, read from filesystem
+  if (cvFilePath && !cvFilePath.startsWith('http://') && !cvFilePath.startsWith('https://')) {
     try {
       fileBuffer = await fs.readFile(cvFilePath);
     } catch (error) {
       throw new Error(`Failed to read CV file: ${error.message}`);
     }
   } 
-  // If URL provided, download it
-  else if (cvUrl) {
-    fileBuffer = await downloadFile(cvUrl);
+  // If URL provided, or file path is a URL, download it
+  else if (cvUrl || (cvFilePath && (cvFilePath.startsWith('http://') || cvFilePath.startsWith('https://')))) {
+    const urlToDownload = cvUrl || cvFilePath;
+    fileBuffer = await downloadFile(urlToDownload);
   } else {
     throw new Error('Either cvUrl or cvFilePath must be provided');
   }
 
   // Determine file type and parse
-  const fileExtension = cvUrl 
-    ? path.extname(new URL(cvUrl).pathname).toLowerCase()
+  const isUrl = cvUrl || (cvFilePath && (cvFilePath.startsWith('http://') || cvFilePath.startsWith('https://')));
+  const fileExtension = isUrl 
+    ? path.extname(new URL(cvUrl || cvFilePath).pathname).toLowerCase()
     : path.extname(cvFilePath).toLowerCase();
 
   if (fileExtension === '.pdf') {
@@ -145,7 +147,14 @@ function downloadFile(url) {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
     
-    protocol.get(url, (response) => {
+    // CloudFront and other CDNs might block requests with empty/missing User-Agent headers
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    };
+    
+    protocol.get(url, options, (response) => {
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download file: ${response.statusCode}`));
         return;

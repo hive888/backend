@@ -10,6 +10,7 @@ const { OAuth2Client } = require('google-auth-library');
 const authValidator = require('../validators/authValidator');
 const validate = require('../middleware/validationMiddleware');
 const crypto = require('crypto');
+const { ROLE_IDS } = require('../config/roles');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 if (!GOOGLE_CLIENT_ID) {
@@ -411,8 +412,8 @@ router.post('/google-login', authValidator.googleLoginValidation, validate, asyn
                 await User.create({
                     customer_id: customer.customer_id,
                     username: email,
-                    password_hash
-                    // role_id omitted -> DB default role_id will apply
+                    password_hash,
+                    role_id: ROLE_IDS.customer
                 });
             } catch (createUserErr) {
                 // If username already exists, we can proceed as login

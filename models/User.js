@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { ROLE_IDS } = require('../config/roles');
 
 const User = {
     async create(userData) {
@@ -10,6 +11,9 @@ const cleanData = Object.fromEntries(
     Object.entries(userData)
         .filter(([k, v]) => v !== undefined && allowedFields.includes(k))
 );
+            if (!cleanData.role_id) {
+                cleanData.role_id = ROLE_IDS.customer;
+            }
             const [result] = await db.query(
                 `INSERT INTO users SET ?`,
                 [cleanData]
@@ -82,7 +86,13 @@ const cleanData = Object.fromEntries(
                  WHERE u.user_id = ?`,
                 [user_id]
             );
-            return rows[0];
+            const user = rows[0];
+            if (!user) return undefined;
+            user.roles = (user.role_name || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return user;
         } catch (err) {
             logger.error(`User model findById error for ID ${user_id}:`, err);
             throw err;
@@ -97,7 +107,13 @@ const cleanData = Object.fromEntries(
                  WHERE u.username = ?`,
                 [email]
             );
-            return rows[0];
+            const user = rows[0];
+            if (!user) return undefined;
+            user.roles = (user.role_name || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return user;
         } catch (err) {
             logger.error(`User model findById error for ID ${email}:`, err);
             throw err;
@@ -125,10 +141,10 @@ async findByUsername(username) {
   const [rows] = await db.query(
     `SELECT 
        u.*,
-       GROUP_CONCAT(r.role_name ORDER BY r.role_name SEPARATOR ',') AS roles_csv
+       STRING_AGG(r.role_name, ',' ORDER BY r.role_name) AS roles_csv
      FROM users u
      LEFT JOIN roles r
-       ON FIND_IN_SET(r.role_id, REPLACE(u.role_id, ' ', '')) > 0
+       ON r.role_id = ANY(string_to_array(REPLACE(u.role_id, ' ', ''), ','))
      WHERE u.username = ?
      GROUP BY u.user_id`,
     [username]
@@ -153,7 +169,13 @@ async findByUsername(username) {
                  WHERE u.username = ?`,
                 [username]
             );
-            return rows[0];
+            const user = rows[0];
+            if (!user) return undefined;
+            user.roles = (user.role_name || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return user;
         } catch (err) {
             logger.error(`User model findByUsername error for ${username}:`, err);
             throw err;
@@ -193,7 +215,13 @@ async findByUsername(username) {
                 `SELECT * FROM users WHERE customer_id = ?`,
                 [customer_id]
             );
-            return rows[0];
+            const user = rows[0];
+            if (!user) return undefined;
+            user.roles = (user.role_name || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return user;
         } catch (err) {
             logger.error(`User model findByCustomerId error for ${customer_id}:`, err);
             throw err;
@@ -239,7 +267,13 @@ async findByUsername(username) {
                  WHERE u.user_id = ?`,
                 [user_id]
             );
-            return rows[0];
+            const user = rows[0];
+            if (!user) return undefined;
+            user.roles = (user.role_name || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return user;
         } catch (err) {
             logger.error(`Get user with roles error for ID ${user_id}:`, err);
             throw err;
@@ -274,7 +308,13 @@ async findByUsername(username) {
                 `SELECT * FROM roles WHERE role_name = ?`,
                 [role_name]
             );
-            return rows[0];
+            const user = rows[0];
+            if (!user) return undefined;
+            user.roles = (user.role_name || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return user;
         } catch (err) {
             logger.error(`Find role by name error for ${role_name}:`, err);
             throw err;

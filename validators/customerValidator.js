@@ -332,6 +332,72 @@ const customerValidator = {
         }
 
         return true;
+      }),
+
+    body('position')
+      .optional({ nullable: true })
+      .customSanitizer(v => (typeof v === 'string' ? v.trim() : v))
+      .custom(v => v === null || typeof v === 'string')
+      .withMessage('position must be a string or null')
+      .bail()
+      .isLength({ max: 120 }).withMessage('position must be less than 120 characters'),
+
+    body('organization')
+      .optional({ nullable: true })
+      .customSanitizer(v => (typeof v === 'string' ? v.trim() : v))
+      .custom(v => v === null || typeof v === 'string')
+      .withMessage('organization must be a string or null')
+      .bail()
+      .isLength({ max: 120 }).withMessage('organization must be less than 120 characters'),
+
+    body('skills')
+      .optional({ nullable: true })
+      .customSanitizer(parseJsonIfString)
+      .custom(v => {
+        if (v === null) return true;
+        if (!Array.isArray(v)) {
+          throw new Error('skills must be an array');
+        }
+        for (const s of v) {
+          if (typeof s !== 'string' || !s.trim()) {
+            throw new Error('each skill must be a non-empty string');
+          }
+        }
+        return true;
+      }),
+
+    body('experience')
+      .optional({ nullable: true })
+      .customSanitizer(v => (typeof v === 'string' ? v.trim() : v))
+      .custom(v => v === null || typeof v === 'string')
+      .withMessage('experience must be a string or null'),
+
+    body('documents')
+      .optional({ nullable: true })
+      .customSanitizer(parseJsonIfString)
+      .custom(v => {
+        if (v === null) return true;
+        if (!Array.isArray(v)) {
+          throw new Error('documents must be an array');
+        }
+        for (const d of v) {
+          if (typeof d !== 'object' || d === null) {
+            throw new Error('each document must be an object');
+          }
+          if (typeof d.name !== 'string' || !d.name.trim()) {
+            throw new Error('each document must have a valid name');
+          }
+          if (typeof d.type !== 'string' || !d.type.trim()) {
+            throw new Error('each document must have a valid type');
+          }
+          if (typeof d.size !== 'string' || !d.size.trim()) {
+            throw new Error('each document must have a valid size');
+          }
+          if (d.url !== undefined && (typeof d.url !== 'string' || !d.url.trim())) {
+            throw new Error('each document url must be a valid string');
+          }
+        }
+        return true;
       })
   ],
 
@@ -473,6 +539,72 @@ const customerValidator = {
           }
         }
 
+        return true;
+      }),
+
+    body('position')
+      .optional({ nullable: true })
+      .customSanitizer(v => (typeof v === 'string' ? v.trim() : v))
+      .custom(v => v === null || typeof v === 'string')
+      .withMessage('position must be a string or null')
+      .bail()
+      .isLength({ max: 120 }).withMessage('position must be less than 120 characters'),
+
+    body('organization')
+      .optional({ nullable: true })
+      .customSanitizer(v => (typeof v === 'string' ? v.trim() : v))
+      .custom(v => v === null || typeof v === 'string')
+      .withMessage('organization must be a string or null')
+      .bail()
+      .isLength({ max: 120 }).withMessage('organization must be less than 120 characters'),
+
+    body('skills')
+      .optional({ nullable: true })
+      .customSanitizer(parseJsonIfString)
+      .custom(v => {
+        if (v === null) return true;
+        if (!Array.isArray(v)) {
+          throw new Error('skills must be an array');
+        }
+        for (const s of v) {
+          if (typeof s !== 'string' || !s.trim()) {
+            throw new Error('each skill must be a non-empty string');
+          }
+        }
+        return true;
+      }),
+
+    body('experience')
+      .optional({ nullable: true })
+      .customSanitizer(v => (typeof v === 'string' ? v.trim() : v))
+      .custom(v => v === null || typeof v === 'string')
+      .withMessage('experience must be a string or null'),
+
+    body('documents')
+      .optional({ nullable: true })
+      .customSanitizer(parseJsonIfString)
+      .custom(v => {
+        if (v === null) return true;
+        if (!Array.isArray(v)) {
+          throw new Error('documents must be an array');
+        }
+        for (const d of v) {
+          if (typeof d !== 'object' || d === null) {
+            throw new Error('each document must be an object');
+          }
+          if (typeof d.name !== 'string' || !d.name.trim()) {
+            throw new Error('each document must have a valid name');
+          }
+          if (typeof d.type !== 'string' || !d.type.trim()) {
+            throw new Error('each document must have a valid type');
+          }
+          if (typeof d.size !== 'string' || !d.size.trim()) {
+            throw new Error('each document must have a valid size');
+          }
+          if (d.url !== undefined && (typeof d.url !== 'string' || !d.url.trim())) {
+            throw new Error('each document url must be a valid string');
+          }
+        }
         return true;
       })
   ]

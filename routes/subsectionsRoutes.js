@@ -11,13 +11,15 @@ router.use((req, res, next) => {
   next();
 });
 
+const authMiddleware = require('../middleware/authMiddleware');
+
 // CRUD routes for subsections
 router.get('/', subsectionsController.getAllSubsections);
 router.get('/section/:sectionId', subsectionsController.getSubsectionsBySection);
 router.get('/:id', subsectionsController.getSubsectionById);
-router.post('/', subsectionsController.createSubsection);
-router.put('/:id', subsectionsController.updateSubsection);
-router.delete('/:id', subsectionsController.deleteSubsection);
+router.post('/', authMiddleware.authenticate, authMiddleware.authorize('administrator'), subsectionsController.createSubsection);
+router.put('/:id', authMiddleware.authenticate, authMiddleware.authorize('administrator'), subsectionsController.updateSubsection);
+router.delete('/:id', authMiddleware.authenticate, authMiddleware.authorize('administrator'), subsectionsController.deleteSubsection);
 
 // Error handling middleware
 router.use((err, req, res, next) => {

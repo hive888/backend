@@ -6,12 +6,12 @@ const bodyValidationMiddleware = require('../middleware/bodyValidationMiddleware
 
 /**
  * Admin Routes
- * All routes require authentication and 'developer' role
+ * All routes require authentication and the administrator role
  */
 
 // Apply authentication and authorization to all admin routes
 router.use(authMiddleware.authenticate);
-router.use(authMiddleware.authorize('developer'));
+router.use(authMiddleware.authorize('administrator'));
 
 // Dashboard
 router.get('/dashboard', adminController.getDashboardStats);
@@ -62,6 +62,10 @@ router.get('/talent-pool', adminController.getTalentPoolRegistrations);
 router.get('/talent-pool/stats', adminController.getTalentPoolStats);
 router.patch('/talent-pool/:id/status', bodyValidationMiddleware, adminController.updateTalentPoolStatus);
 
+// Project Pool Management
+router.get('/project-pool', adminController.getProjectPoolQueue);
+router.patch('/project-pool/:id/status', bodyValidationMiddleware, adminController.updateProjectPoolStatus);
+
 // Contest Management
 router.get('/contests', adminController.getContests);
 router.get('/contests/:id', adminController.getContestDetails);
@@ -74,6 +78,45 @@ router.get('/access-codes', adminController.getAccessCodes);
 router.get('/access-codes/:id', adminController.getAccessCodeDetails);
 router.post('/access-codes', bodyValidationMiddleware, adminController.createAccessCode);
 router.put('/access-codes/:id', bodyValidationMiddleware, adminController.updateAccessCode);
+
+// Private Groups Management
+router.get('/private-groups', adminController.getPrivateGroups);
+router.get('/private-groups/:id', adminController.getPrivateGroupById);
+router.post('/private-groups', bodyValidationMiddleware, adminController.createPrivateGroup);
+router.put('/private-groups/:id', bodyValidationMiddleware, adminController.updatePrivateGroup);
+router.delete('/private-groups/:id', adminController.deletePrivateGroup);
+
+// Media S3 Upload Gateway
+const multer = require('multer');
+const { uploadToS3 } = require('../config/s3Config');
+const logger = require('../utils/logger');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 } // 200MB limit for rich media/videos
+});
+
+router.post('/upload-media', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded.' });
+    }
+
+    const folder = req.body.folder || 'academy_media/';
+    const s3Url = await uploadToS3(req.file, folder);
+
+    return res.json({
+      success: true,
+      url: s3Url,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size
+    });
+  } catch (error) {
+    logger.error('Failed to upload media to S3 via admin endpoint:', error);
+    return res.status(500).json({ success: false, message: 'Failed to upload media file.' });
+  }
+});
 
 module.exports = router;
 

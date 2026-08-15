@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const bcrypt = require('bcrypt');
 const { sendPasswordResetEmail } = require('../utils/email');
 const { v4: uuidv4 } = require('uuid');
+const { isAdministrator, ROLE_IDS } = require('../config/roles');
 
 function getFrontendBaseUrl() {
   return (
@@ -25,8 +26,8 @@ const userController = {
           const { id } = req.params;
           const requestingUser = req.user;
       
-          // If user is a developer, skip ownership check
-          if (requestingUser.role_name === 'developer') {
+          // Administrators can update any user record
+          if (isAdministrator(requestingUser)) {
             return next();
           }
       
@@ -203,11 +204,11 @@ const userController = {
             const { username, password, role_id, customer_id } = req.body || {};
     
             // Validate required fields
-            if (!username || !password || !role_id) {
+            if (!username || !password) {
                 return res.status(400).json({
                     success: false,
                     error: 'Missing required fields',
-                    message: 'Username, password and role_id are required',
+                    message: 'Username and password are required',
                     code: 'VALIDATION_ERROR'
                 });
             }
@@ -227,11 +228,15 @@ const userController = {
             const password_hash = await bcrypt.hash(password, saltRounds);
     
             // Build user object with only defined values
+            const assignedRoleId = isAdministrator(req.user) && role_id
+                ? role_id
+                : ROLE_IDS.customer;
+
             const userData = {
                 user_id: uuidv4(),
                 username,
                 password_hash,
-                role_id
+                role_id: assignedRoleId
             };
     
             // Only add customer_id if provided

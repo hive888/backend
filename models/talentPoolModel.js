@@ -7,8 +7,9 @@ class TalentPoolRegistration {
         full_name, email, country, city, phone_number, age_range, gender,
         education_level, years_experience, skills, spoken_languages,
         preferred_work_type, availability, heard_about_us, heard_about_other,
-        skills_description, cv_file_path, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        skills_description, cv_file_path, status,
+        certifications, projects
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -29,7 +30,9 @@ class TalentPoolRegistration {
       registrationData.heard_about_other,
       registrationData.skills_description,
       registrationData.cv_file_path,
-      registrationData.status || 0 // Default to 0 if not provided
+      registrationData.status || 0,
+      registrationData.certifications ? JSON.stringify(registrationData.certifications) : null,
+      registrationData.projects ? JSON.stringify(registrationData.projects) : null
     ];
 
     const [result] = await db.query(sql, values);
@@ -42,7 +45,8 @@ class TalentPoolRegistration {
         id, status, full_name, email, country, city, phone_number, age_range, gender,
         education_level, years_experience, skills, spoken_languages,
         preferred_work_type, availability, heard_about_us, heard_about_other,
-        skills_description, cv_file_path, created_at
+        skills_description, cv_file_path, created_at,
+        certifications, projects
       FROM talent_pool_registration
     `;
     
@@ -65,7 +69,8 @@ class TalentPoolRegistration {
         id, status, full_name, email, country, city, phone_number, age_range, gender,
         education_level, years_experience, skills, spoken_languages,
         preferred_work_type, availability, heard_about_us, heard_about_other,
-        skills_description, cv_file_path, created_at
+        skills_description, cv_file_path, created_at,
+        certifications, projects
       FROM talent_pool_registration
       WHERE id = ?
     `;
@@ -101,7 +106,7 @@ class TalentPoolRegistration {
       'status', 'full_name', 'country', 'city', 'phone_number', 'age_range', 
       'gender', 'education_level', 'years_experience', 'skills', 'spoken_languages',
       'preferred_work_type', 'availability', 'heard_about_us', 'heard_about_other',
-      'skills_description'
+      'skills_description', 'cv_file_path', 'certifications', 'projects'
     ];
     
     const updates = [];
@@ -110,7 +115,7 @@ class TalentPoolRegistration {
     Object.keys(updateData).forEach(key => {
       if (allowedFields.includes(key)) {
         updates.push(`${key} = ?`);
-        if (key === 'skills' || key === 'spoken_languages') {
+        if (key === 'skills' || key === 'spoken_languages' || key === 'certifications' || key === 'projects') {
           values.push(JSON.stringify(updateData[key]));
         } else {
           values.push(updateData[key]);
@@ -196,7 +201,8 @@ class TalentPoolRegistration {
         id, status, full_name, email, country, city, phone_number, age_range, gender,
         education_level, years_experience, skills, spoken_languages,
         preferred_work_type, availability, heard_about_us, heard_about_other,
-        skills_description, cv_file_path, created_at
+        skills_description, cv_file_path, created_at,
+        certifications, projects
       FROM talent_pool_registration
       WHERE 1=1
     `;

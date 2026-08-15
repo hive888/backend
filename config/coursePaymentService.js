@@ -11,10 +11,12 @@ if (!stripeSecretKey) {
   throw new Error('STRIPE_SECRET_KEY or STRIPE_SECRET_KEY_LIVE must be set');
 }
 
-// Validate that we're using a live key (not test key)
+// Validate that we're using a live key (not test key) in production
 if (stripeSecretKey.startsWith('sk_test_')) {
-  logger.warn('⚠️ WARNING: Test Stripe key detected. Using live key is required for production.');
-  throw new Error('Test Stripe key detected. Please use a live key (sk_live_...) for production.');
+  logger.warn('⚠️ WARNING: Test Stripe key detected. Using test key is permitted for development/testing but NOT for production.');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Test Stripe key detected. Please use a live key (sk_live_...) for production.');
+  }
 }
 
 if (!stripeSecretKey.startsWith('sk_live_')) {

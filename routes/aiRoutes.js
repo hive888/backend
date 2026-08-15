@@ -27,9 +27,9 @@ const aiRateLimiter = rateLimit({
   }
 });
 
-// All AI routes require authentication and developer role
+// All AI routes require authentication and the administrator role
 router.use(authMiddleware.authenticate);
-router.use(authMiddleware.authorize('developer'));
+router.use(authMiddleware.authorize('administrator'));
 router.use(aiRateLimiter);
 
 /**

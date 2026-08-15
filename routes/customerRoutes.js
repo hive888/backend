@@ -22,6 +22,29 @@ const upload = multer({
   }
 });
 
+// Configure multer for document uploads
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+      'image/webp'
+    ];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, DOCX, and images are allowed!'), false);
+    }
+  }
+});
+
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 10,
@@ -106,6 +129,27 @@ router.put(
   customerController.updateMyProfileDetails
 );
 
+// Route for uploading documents to S3
+router.post(
+  '/me/documents',
+  authMiddleware.authenticate,
+  (req, res, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        console.error('Document upload error:', err);
+        return res.status(400).json({
+          success: false,
+          error: 'Document upload error',
+          message: err.message,
+          code: 'DOCUMENT_UPLOAD_ERROR'
+        });
+      }
+      next();
+    });
+  },
+  customerController.uploadDocument
+);
+
 // Customer update route - for general updates (may include profile picture)
 router.put('/:id',
   authMiddleware.authenticate,
@@ -133,7 +177,7 @@ router.put('/update/full-profile',
 
 router.patch('/:id/profile-picture',
   authMiddleware.authenticate,
-  authMiddleware.authorize('developer'),
+  authMiddleware.authorize('administrator'),
   customerValidator.customerIdParamValidation,
   validate,
   upload.single('profile_picture'),
@@ -163,6 +207,8 @@ router.put(
 
 // Get all customers
 router.get('/',
+  authMiddleware.authenticate,
+  authMiddleware.authorize('administrator'),
   customerValidator.getAllCustomersQueryValidation,
   validate,
   customerController.getAllCustomers
@@ -170,7 +216,7 @@ router.get('/',
 
 router.get('/summary',
   authMiddleware.authenticate,
-  authMiddleware.authorize('developer'), 
+  authMiddleware.authorize('administrator'), 
   customerController.getCustomerSummary
 );
 
@@ -186,7 +232,7 @@ router.get('/:id',
 // Delete customer
 router.delete('/:id',
   authMiddleware.authenticate,
-  authMiddleware.authorize('developer'),
+  authMiddleware.authorize('administrator'),
   customerValidator.customerIdParamValidation,
   validate,
   customerController.deleteCustomer

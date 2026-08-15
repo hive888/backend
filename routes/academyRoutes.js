@@ -9,14 +9,40 @@ const academyController = require('../controllers/academyController');
 // Public course catalog
 router.get('/courses', academyController.listCourses);
 router.get('/courses/me', authMiddleware.authenticate, academyController.listMyCourses);
+
+// Admin: list all courses (active + inactive)
+router.get(
+  '/courses/admin',
+  authMiddleware.authenticate,
+  authMiddleware.authorize('administrator'),
+  academyController.listAllCoursesAdmin
+);
+
 router.post(
   '/courses',
   authMiddleware.authenticate,
-  authMiddleware.authorize('developer'),
+  authMiddleware.authorize('administrator'),
   academyValidator.createCourse,
   validate,
   academyController.createCourse
 );
+
+router.put(
+  '/courses/:id',
+  authMiddleware.authenticate,
+  authMiddleware.authorize('administrator'),
+  academyValidator.createCourse,
+  validate,
+  academyController.updateCourse
+);
+
+router.delete(
+  '/courses/:id',
+  authMiddleware.authenticate,
+  authMiddleware.authorize('administrator'),
+  academyController.deleteCourse
+);
+
 router.get('/courses/:slug', academyValidator.courseSlugParam, validate, academyController.getCourseBySlug);
 
 // Authenticated access checks + redeem
@@ -83,7 +109,7 @@ router.post(
 router.post(
   '/courses/:slug/sections/:id/quiz',
   authMiddleware.authenticate,
-  authMiddleware.authorize('developer'),
+  authMiddleware.authorize('administrator'),
   academyValidator.courseSlugParam,
   validate,
   academyController.createSubsectionQuiz
@@ -92,7 +118,7 @@ router.post(
 router.get(
   '/courses/:slug/sections/:id/quiz/admin',
   authMiddleware.authenticate,
-  authMiddleware.authorize('developer'),
+  authMiddleware.authorize('administrator'),
   academyValidator.courseSlugParam,
   validate,
   academyController.getSubsectionQuizAdminView

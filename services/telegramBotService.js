@@ -18,39 +18,62 @@ class TelegramBotService {
       return;
     }
 
-    // Initialize bot asynchronously (delete webhook first, then start polling)
+    // Only one process may poll a bot token. Local/dev shares the production token,
+    // so polling is off unless TELEGRAM_ENABLE_POLLING=true.
+    this.enablePolling = this.shouldEnablePolling();
+
     this.init().catch(error => {
       logger.error('Failed to initialize Telegram bot:', error);
     });
   }
 
+  shouldEnablePolling() {
+    const flag = String(process.env.TELEGRAM_ENABLE_POLLING || '').toLowerCase();
+    if (flag === 'true' || flag === '1') return true;
+    if (flag === 'false' || flag === '0') return false;
+    return process.env.NODE_ENV === 'production';
+  }
+
+  stopPolling() {
+    if (!this.bot) return;
+    try {
+      this.bot.stopPolling({ cancel: true });
+    } catch (_) {
+      // already stopped
+    }
+  }
+
   async init() {
     try {
+      if (!this.enablePolling) {
+        this.bot = new TelegramBot(this.token, { polling: false });
+        this.setupHandlers();
+        logger.info('Telegram Bot Service initialized without polling (set TELEGRAM_ENABLE_POLLING=true to receive updates locally)', {
+          privateGroupId: this.privateGroupId,
+          env: process.env.NODE_ENV
+        });
+        return;
+      }
+
       // Delete any existing webhook first (webhook and polling can't run simultaneously)
       const tempBot = new TelegramBot(this.token, { polling: false });
       try {
         await tempBot.deleteWebHook();
         logger.info('Deleted existing webhook (if any)');
       } catch (webhookError) {
-        // Webhook might not exist, that's okay - ignore the error
         logger.debug('No webhook to delete');
       }
       
-      // Close temp bot gracefully, ignore errors (rate limiting, etc.)
       try {
         await tempBot.close().catch(err => {
-          // Ignore close errors - bot might already be closed or rate limited
           logger.debug('Error closing temp bot (ignored):', err.message);
         });
       } catch (closeError) {
-        // Ignore close errors - bot might already be closed or rate limited
         logger.debug('Error closing temp bot (ignored):', closeError.message);
       }
       
-      // Small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Now create bot with polling enabled
       this.bot = new TelegramBot(this.token, { polling: true });
       
       this.setupHandlers();
@@ -116,12 +139,12 @@ class TelegramBotService {
 
     // Error handling
     this.bot.on('polling_error', (error) => {
-      // Handle 409 conflict (another bot instance running) - log as warning, not error
       if (error.code === 'ETELEGRAM' && error.response?.statusCode === 409) {
-        logger.warn('Telegram bot conflict: Another bot instance is already running. This instance will not receive updates.', {
-          message: error.message
-        });
-        // Don't throw - allow the server to continue running
+        if (!this._stoppedForConflict) {
+          this._stoppedForConflict = true;
+          logger.warn('Telegram bot conflict: another instance is already polling this token. Stopping local polling so logs are not flooded.');
+          this.stopPolling();
+        }
         return;
       }
       

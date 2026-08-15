@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { createClient } = require('redis');
 const logger = require('../utils/logger');
 const User = require('../models/User');
+const { expandRequiredRoles } = require('../config/roles');
 
 class AuthMiddleware {
   constructor() {
@@ -16,8 +17,12 @@ class AuthMiddleware {
       logger.error('Redis client error:', err);
     });
 
-    await this.redisClient.connect();
-    logger.info('Redis connected successfully');
+    try {
+      await this.redisClient.connect();
+      logger.info('Redis connected successfully');
+    } catch (err) {
+      logger.error('Redis connect failed:', err.message);
+    }
   }
 
   // Main authentication method
@@ -36,7 +41,24 @@ class AuthMiddleware {
         return this.sendError(res, 401, 'Session expired', 'TOKEN_REVOKED');
       }
 
-      req.user = decoded;
+      const dbUser = await User.findById(decoded.user_id);
+      if (!dbUser) {
+        return this.sendError(res, 401, 'User not found', 'USER_NOT_FOUND');
+      }
+
+      const roles = Array.isArray(dbUser.roles) && dbUser.roles.length
+        ? dbUser.roles
+        : (dbUser.role_name
+            ? String(dbUser.role_name).split(',').map((role) => role.trim()).filter(Boolean)
+            : []);
+
+      req.user = {
+        ...decoded,
+        role_id: dbUser.role_id,
+        role_name: roles.join(','),
+        roles,
+        customer_id: dbUser.customer_id ?? decoded.customer_id,
+      };
       next();
     } catch (err) {
       this.handleAuthError(err, res);
@@ -97,13 +119,9 @@ class AuthMiddleware {
 
   // Authorization middleware
 authorize = (required = []) => {
-  if (typeof required === 'string') required = [required];
-
-  // normalize required roles once
-  const requiredNorm = required.map(r => r.toLowerCase());
+  const requiredNorm = expandRequiredRoles(required);
 
   return (req, res, next) => {
-    // extract user roles from token
     const tokenRoles = Array.isArray(req.user?.roles)
       ? req.user.roles
       : (req.user?.role_name
@@ -114,10 +132,7 @@ authorize = (required = []) => {
       return this.sendError(res, 401, 'Not authenticated', 'NOT_AUTHENTICATED');
     }
 
-    // normalize user roles
-    const userNorm = tokenRoles.map(r => r.toLowerCase());
-
-    // allow if any required role is present
+    const userNorm = tokenRoles.map(r => String(r).toLowerCase());
     const allowed = requiredNorm.length === 0
       ? true
       : requiredNorm.some(r => userNorm.includes(r));
@@ -191,5 +206,6 @@ module.exports = {
   verifyRefreshToken: authMiddleware.verifyRefreshToken.bind(authMiddleware),
   authorize: authMiddleware.authorize.bind(authMiddleware),
   revokeToken: authMiddleware.revokeToken.bind(authMiddleware),
-  revokeRefreshToken: authMiddleware.revokeRefreshToken.bind(authMiddleware)
+  revokeRefreshToken: authMiddleware.revokeRefreshToken.bind(authMiddleware),
+  redisClient: authMiddleware.redisClient,
 };

@@ -103,13 +103,13 @@ class SubsectionsController {
 
   async createSubsection(req, res) {
     try {
-      const { section_id, title, content_html, sort_order = 0 } = req.body;
+      const { section_id, title, content_html = '', pdf_url = null, sort_order = 0, quiz_required = 0, quiz_pass_score = 70 } = req.body;
 
       // Basic validation
-      if (!section_id || !title || !content_html) {
+      if (!section_id || !title) {
         return res.status(400).json({
           success: false,
-          message: 'Section ID, title, and content are required'
+          message: 'Section ID and title are required'
         });
       }
 
@@ -117,7 +117,10 @@ class SubsectionsController {
         section_id,
         title,
         content_html,
-        sort_order
+        pdf_url,
+        sort_order,
+        quiz_required,
+        quiz_pass_score
       });
 
       return res.status(201).json({
@@ -149,7 +152,7 @@ class SubsectionsController {
   async updateSubsection(req, res) {
     try {
       const { id } = req.params;
-      const { section_id, title, content_html, sort_order } = req.body;
+      const { section_id, title, content_html, pdf_url, sort_order, quiz_required, quiz_pass_score } = req.body;
 
       // Check if subsection exists
       const subsection = await Subsection.getById(id);
@@ -164,7 +167,10 @@ class SubsectionsController {
         section_id,
         title,
         content_html,
-        sort_order
+        pdf_url,
+        sort_order,
+        quiz_required,
+        quiz_pass_score
       });
 
       return res.json({

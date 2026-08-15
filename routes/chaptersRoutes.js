@@ -11,12 +11,14 @@ router.use((req, res, next) => {
   next();
 });
 
+const authMiddleware = require('../middleware/authMiddleware');
+
 // CRUD routes for chapters
 router.get('/', chaptersController.getAllChapters);
 router.get('/:id', chaptersController.getChapterById);
-router.post('/', chaptersController.createChapter);
-router.put('/:id', chaptersController.updateChapter);
-router.delete('/:id', chaptersController.deleteChapter);
+router.post('/', authMiddleware.authenticate, authMiddleware.authorize('administrator'), chaptersController.createChapter);
+router.put('/:id', authMiddleware.authenticate, authMiddleware.authorize('administrator'), chaptersController.updateChapter);
+router.delete('/:id', authMiddleware.authenticate, authMiddleware.authorize('administrator'), chaptersController.deleteChapter);
 
 // Error handling middleware
 router.use((err, req, res, next) => {

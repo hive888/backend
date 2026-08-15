@@ -1,0 +1,714 @@
+{
+  "access_code_users": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "access_code_id",
+        "first_name",
+        "last_name",
+        "email"
+      ]
+    ]
+  },
+  "access_codes": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "code"
+      ]
+    ]
+  },
+  "activity_logs": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "addresses": {
+    "pk": "address_id",
+    "uniques": [
+      [
+        "address_id"
+      ]
+    ]
+  },
+  "assessment_content": {
+    "pk": "skill",
+    "uniques": [
+      [
+        "skill"
+      ]
+    ]
+  },
+  "assessments": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "bundle_products": {
+    "pk": "bundle_product_id",
+    "uniques": [
+      [
+        "bundle_product_id"
+      ],
+      [
+        "bundle_id",
+        "product_id"
+      ]
+    ]
+  },
+  "chapters": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "connection_requests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "sender_id",
+        "receiver_id"
+      ]
+    ]
+  },
+  "contest_metrics_current": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "registration_id"
+      ]
+    ]
+  },
+  "contest_registrations": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "contest_id",
+        "customer_id"
+      ]
+    ]
+  },
+  "contests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "slug"
+      ]
+    ]
+  },
+  "courses": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "slug"
+      ]
+    ]
+  },
+  "customer_contracts": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_reference"
+      ]
+    ]
+  },
+  "customer_course_access": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id",
+        "course_id"
+      ]
+    ]
+  },
+  "customer_kyc": {
+    "pk": "kyc_id",
+    "uniques": [
+      [
+        "kyc_id"
+      ],
+      [
+        "external_kyc_id"
+      ],
+      [
+        "customer_id",
+        "kyc_version"
+      ]
+    ]
+  },
+  "customer_products": {
+    "pk": "customer_product_id",
+    "uniques": [
+      [
+        "customer_product_id"
+      ],
+      [
+        "customer_id",
+        "product_id"
+      ]
+    ]
+  },
+  "customer_profile_details": {
+    "pk": "profile_details_id",
+    "uniques": [
+      [
+        "profile_details_id"
+      ],
+      [
+        "customer_id"
+      ]
+    ]
+  },
+  "customer_registrations": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "customer_section_quiz_status": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id",
+        "section_id"
+      ]
+    ]
+  },
+  "customer_subsection_progress": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id",
+        "subsection_id"
+      ]
+    ]
+  },
+  "customers": {
+    "pk": "customer_id",
+    "uniques": [
+      [
+        "customer_id"
+      ],
+      [
+        "email"
+      ],
+      [
+        "phone"
+      ],
+      [
+        "referral_index"
+      ],
+      [
+        "telegram_user_id"
+      ]
+    ]
+  },
+  "events": {
+    "pk": "event_id",
+    "uniques": [
+      [
+        "event_id"
+      ]
+    ]
+  },
+  "exit_exam_payments": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id",
+        "access_code_id"
+      ]
+    ]
+  },
+  "interest_tags": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "name"
+      ]
+    ]
+  },
+  "interests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "name"
+      ]
+    ]
+  },
+  "investor_profiles": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id"
+      ]
+    ]
+  },
+  "languages": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "name"
+      ]
+    ]
+  },
+  "launch_event_registrations": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "newsletter_subscribers": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "email"
+      ]
+    ]
+  },
+  "order_items": {
+    "pk": "item_id",
+    "uniques": [
+      [
+        "item_id"
+      ]
+    ]
+  },
+  "orders": {
+    "pk": "order_id",
+    "uniques": [
+      [
+        "order_id"
+      ]
+    ]
+  },
+  "payment_method_currencies": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "payment_method_id",
+        "network_id",
+        "currency_code"
+      ]
+    ]
+  },
+  "payment_method_networks": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "payment_method_id",
+        "network_name"
+      ]
+    ]
+  },
+  "payment_screenshots": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "registration_id"
+      ]
+    ]
+  },
+  "payment_tracking": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "portfolio_links": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "product_bundles": {
+    "pk": "bundle_id",
+    "uniques": [
+      [
+        "bundle_id"
+      ]
+    ]
+  },
+  "product_promos": {
+    "pk": "promo_id",
+    "uniques": [
+      [
+        "promo_id"
+      ],
+      [
+        "code"
+      ]
+    ]
+  },
+  "products": {
+    "pk": "product_id",
+    "uniques": [
+      [
+        "product_id"
+      ],
+      [
+        "slug"
+      ]
+    ]
+  },
+  "project_requests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "projects": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "request_assignments": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "request_type",
+        "request_id",
+        "talent_pool_id",
+        "deleted_at"
+      ]
+    ]
+  },
+  "reservations": {
+    "pk": "reservation_id",
+    "uniques": [
+      [
+        "reservation_id"
+      ],
+      [
+        "email",
+        "product_id"
+      ]
+    ]
+  },
+  "reviews": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "roles": {
+    "pk": "role_id",
+    "uniques": [
+      [
+        "role_id"
+      ],
+      [
+        "role_name"
+      ]
+    ]
+  },
+  "sections": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "selfstudy_registrations": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "program_slug",
+        "customer_id"
+      ]
+    ]
+  },
+  "skills": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "name"
+      ]
+    ]
+  },
+  "subsection_quiz_options": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "subsection_quiz_questions": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "subsections": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "talent_interests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "talent_id",
+        "interest_id"
+      ]
+    ]
+  },
+  "talent_languages": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "talent_id",
+        "language_id"
+      ]
+    ]
+  },
+  "talent_pool_registration": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "email"
+      ]
+    ]
+  },
+  "talent_profiles": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id"
+      ]
+    ]
+  },
+  "talent_requests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "talent_skills": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "talent_id",
+        "skill_id"
+      ]
+    ]
+  },
+  "telegram_topics": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "group_id",
+        "topic_id"
+      ]
+    ]
+  },
+  "telegram_verification_codes": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "transaction_logs": {
+    "pk": "log_id",
+    "uniques": [
+      [
+        "log_id"
+      ]
+    ]
+  },
+  "transactions": {
+    "pk": "transaction_id",
+    "uniques": [
+      [
+        "transaction_id"
+      ],
+      [
+        "order_id"
+      ]
+    ]
+  },
+  "universities": {
+    "pk": "university_id",
+    "uniques": [
+      [
+        "university_id"
+      ]
+    ]
+  },
+  "user_interests": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "customer_id",
+        "tag_id"
+      ]
+    ]
+  },
+  "users": {
+    "pk": "user_id",
+    "uniques": [
+      [
+        "user_id"
+      ],
+      [
+        "username"
+      ],
+      [
+        "customer_id"
+      ]
+    ]
+  },
+  "work_experiences": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "project_pool": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ]
+    ]
+  },
+  "project_applications": {
+    "pk": "id",
+    "uniques": [
+      [
+        "id"
+      ],
+      [
+        "user_id",
+        "project_id",
+        "role_type"
+      ]
+    ]
+  }
+}

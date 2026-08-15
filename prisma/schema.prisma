@@ -1,0 +1,1210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AccessCodeUsers {
+  id Int @id @default(autoincrement())
+  access_code_id Int
+  first_name String @db.VarChar(100)
+  last_name String @db.VarChar(100)
+  email String? @db.VarChar(255)
+  phone String? @db.VarChar(20)
+  status String? @default("pending") @db.VarChar(64)
+  registered_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([access_code_id, first_name, last_name, email])
+  @@index([access_code_id])
+  @@index([status])
+  @@index([first_name, last_name])
+  @@index([email])
+  @@index([phone])
+  @@map("access_code_users")
+}
+
+model AccessCodes {
+  id Int @id @default(autoincrement())
+  code String @unique @db.VarChar(64)
+  course_id Int?
+  payment_amount Decimal @default(18.00) @db.Decimal(10, 2)
+  payment_currency String @default("USD") @db.VarChar(10)
+  exit_exam_fee Decimal @default(0.00) @db.Decimal(10, 2)
+  university_id Int?
+  label String? @db.VarChar(255)
+  university_name String? @db.VarChar(255)
+  total_students Int?
+  max_uses Int?
+  used_count Int @default(0)
+  is_active Int @default(1) @db.SmallInt
+  expires_at DateTime? @db.Timestamp(0)
+  notes String? @db.Text
+  created_by String? @db.VarChar(36)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([course_id])
+  @@index([university_id])
+  @@map("access_codes")
+}
+
+model ActivityLogs {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  related_customer_id Int?
+  activity_type String @db.VarChar(100)
+  description String? @db.Text
+  metadata Json?
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([customer_id])
+  @@index([related_customer_id])
+  @@index([activity_type])
+  @@index([created_at])
+  @@map("activity_logs")
+}
+
+model Addresses {
+  address_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  customer_id Int
+  address_type String @db.VarChar(64)
+  recipient_name String? @db.VarChar(255)
+  address_line1 String @db.VarChar(255)
+  address_line2 String? @db.VarChar(255)
+  city String @db.VarChar(100)
+  state String? @db.VarChar(100)
+  postal_code String @db.VarChar(20)
+  country String @db.VarChar(100)
+  phone String? @db.VarChar(20)
+  is_default Int? @default(0) @db.SmallInt
+  notes String? @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  isShippingTheSame Int? @default(0) @db.SmallInt
+  @@index([customer_id])
+  @@index([country])
+  @@index([address_type, customer_id])
+  @@map("addresses")
+}
+
+model AssessmentContent {
+  skill String @id @db.VarChar(50)
+  role_title String @db.VarChar(150)
+  questions Json
+  project_brief String? @db.Text
+  instructions String? @db.Text
+  is_active Int @default(1) @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@map("assessment_content")
+}
+
+model Assessments {
+  id Int @id @default(autoincrement())
+  full_name String @db.VarChar(150)
+  email String @db.VarChar(255)
+  phone String? @db.VarChar(50)
+  country String? @db.VarChar(100)
+  city String? @db.VarChar(100)
+  nationality String? @db.VarChar(100)
+  gender String? @db.VarChar(50)
+  date_of_birth DateTime? @db.Date
+  linkedin String? @db.VarChar(255)
+  github String? @db.VarChar(255)
+  portfolio String? @db.VarChar(255)
+  cv_url String? @db.VarChar(500)
+  primary_role String? @db.VarChar(150)
+  secondary_skills String? @db.VarChar(255)
+  years_experience String? @db.VarChar(50)
+  employment_status String? @db.VarChar(100)
+  current_company String? @db.VarChar(150)
+  current_job_title String? @db.VarChar(150)
+  remote_experience String? @db.VarChar(50)
+  international_clients String? @db.VarChar(50)
+  education_level String? @db.VarChar(100)
+  field_of_study String? @db.VarChar(150)
+  university String? @db.VarChar(150)
+  graduation_year String? @db.VarChar(10)
+  has_certification String? @db.VarChar(50)
+  certifications String? @db.VarChar(500)
+  available_remote String? @db.VarChar(50)
+  hours_per_week String? @db.VarChar(50)
+  notice_period String? @db.VarChar(50)
+  preferred_work_type String? @db.VarChar(100)
+  expected_salary_usd String? @db.VarChar(50)
+  preferred_payment String? @db.VarChar(50)
+  english_level String? @db.VarChar(50)
+  other_languages_text String? @db.VarChar(255)
+  english_meetings String? @db.VarChar(50)
+  has_laptop String? @db.VarChar(50)
+  stable_internet String? @db.VarChar(50)
+  backup_internet String? @db.VarChar(50)
+  power_backup String? @db.VarChar(50)
+  can_attend_meetings String? @db.VarChar(50)
+  applying_role String? @db.VarChar(150)
+  tech_languages Json?
+  frameworks Json?
+  databases Json?
+  devops_tools Json?
+  production_projects String? @db.VarChar(50)
+  deployed_app String? @db.VarChar(50)
+  used_git_team String? @db.VarChar(50)
+  built_api String? @db.VarChar(50)
+  worked_large_system String? @db.VarChar(50)
+  rest_api_answer String? @db.Text
+  sql_nosql_answer String? @db.Text
+  authentication_answer String? @db.Text
+  version_control_answer String? @db.Text
+  deployment_answer String? @db.Text
+  backend_answer String? @db.Text
+  frontend_answer String? @db.Text
+  devops_answer String? @db.Text
+  debug_answer String? @db.Text
+  difficult_task_answer String? @db.Text
+  learn_new_tech_answer String? @db.Text
+  deadline_answer String? @db.Text
+  complex_system_description String? @db.Text
+  complex_system_role String? @db.Text
+  complex_system_tech String? @db.Text
+  complex_system_problems String? @db.Text
+  ready_tech_test String? @db.VarChar(50)
+  ready_live_coding String? @db.VarChar(50)
+  ready_project_trial String? @db.VarChar(50)
+  worked_in_team String? @db.VarChar(50)
+  worked_remote_team String? @db.VarChar(50)
+  collaboration_tools String? @db.VarChar(50)
+  disagreement_handling String? @db.Text
+  mistake_handling String? @db.Text
+  finish_tasks String? @db.VarChar(50)
+  deadline_close_action String? @db.Text
+  time_management String? @db.Text
+  coding_standards String? @db.VarChar(50)
+  strict_requirements String? @db.VarChar(50)
+  attend_meetings_readiness String? @db.VarChar(50)
+  timezone_readiness String? @db.VarChar(50)
+  quiet_workspace String? @db.VarChar(50)
+  long_term_project String? @db.VarChar(50)
+  ready_to_sign_contract String? @db.VarChar(50)
+  unhappy_client_answer String? @db.Text
+  dont_understand_task_answer String? @db.Text
+  correction_reaction_answer String? @db.Text
+  urgent_extra_time_answer String? @db.Text
+  better_offer_answer String? @db.Text
+  why_swafri String? @db.Text
+  desired_projects String? @db.Text
+  uniqueness String? @db.Text
+  career_goals String? @db.Text
+  confirm_true_answers Int @default(0) @db.SmallInt
+  agree_screening Int @default(0) @db.SmallInt
+  agree_interview Int @default(0) @db.SmallInt
+  agree_remote_contract Int @default(0) @db.SmallInt
+  readiness_score Int?
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  selected_skills Json?
+  answers Json?
+  project_url String? @db.VarChar(500)
+  project_description String? @db.Text
+  behavioral_scores Json?
+  admin_status String? @db.VarChar(50)
+  admin_notes String? @db.Text
+  raw_payload Json?
+  @@index([email])
+  @@map("assessments")
+}
+
+model BundleProducts {
+  bundle_product_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  bundle_id String @db.VarChar(36)
+  product_id String @db.VarChar(36)
+  quantity Int @default(1)
+  @@unique([bundle_id, product_id])
+  @@index([product_id])
+  @@map("bundle_products")
+}
+
+model Chapters {
+  id Int @id @default(autoincrement())
+  title String @db.VarChar(255)
+  sort_order Int? @default(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  course_id Int?
+  @@map("chapters")
+}
+
+model ConnectionRequests {
+  id Int @id @default(autoincrement())
+  sender_id Int
+  receiver_id Int
+  status String @default("pending") @db.VarChar(64)
+  message String? @db.Text
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@unique([sender_id, receiver_id])
+  @@index([sender_id])
+  @@index([receiver_id])
+  @@index([status])
+  @@map("connection_requests")
+}
+
+model ContestMetricsCurrent {
+  id Int @id @default(autoincrement())
+  registration_id Int @unique
+  total_wallet_balance Decimal @default(0.00000000) @db.Decimal(20, 8)
+  total_unrealized_profit Decimal @default(0.00000000) @db.Decimal(20, 8)
+  net_profit Decimal @default(0.00000000) @db.Decimal(20, 8)
+  trades_count Int @default(0)
+  last_updated_utc DateTime @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([last_updated_utc])
+  @@map("contest_metrics_current")
+}
+
+model ContestRegistrations {
+  id Int @id @default(autoincrement())
+  contest_id Int
+  customer_id Int
+  country String @db.VarChar(100)
+  binance_api_key_cipher String? @db.Text
+  binance_secret_cipher String? @db.Text
+  api_key_last4 String? @db.Char(4)
+  exchange_user_id String? @db.VarChar(128)
+  exchange_username String? @db.VarChar(255)
+  status String @default("active") @db.VarChar(64)
+  registered_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([contest_id, customer_id])
+  @@index([contest_id])
+  @@index([customer_id])
+  @@map("contest_registrations")
+}
+
+model Contests {
+  id Int @id @default(autoincrement())
+  slug String @unique @db.VarChar(100)
+  description String @db.VarChar(255)
+  type String @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@map("contests")
+}
+
+model Courses {
+  id Int @id @default(autoincrement())
+  slug String @unique @db.VarChar(120)
+  title String @db.VarChar(255)
+  short_description String? @db.Text
+  detailed_description String? @db.Text
+  thumbnail_url String? @db.VarChar(500)
+  is_active Int @default(1) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  price Decimal @default(0.00) @db.Decimal(10, 2)
+  currency String @default("USD") @db.VarChar(10)
+  @@map("courses")
+}
+
+model CustomerContracts {
+  id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.Char(36)
+  customer_reference Int @unique
+  customer_type String @db.VarChar(64)
+  first_name String? @db.VarChar(100)
+  last_name String? @db.VarChar(100)
+  date_of_birth DateTime? @db.Date
+  citizenship String? @db.VarChar(2)
+  country_of_residence String? @db.VarChar(2)
+  email String @db.VarChar(255)
+  address_type String? @default("BASIC") @db.VarChar(64)
+  street String? @db.VarChar(255)
+  house_number String? @db.VarChar(50)
+  zip_code String? @db.VarChar(20)
+  city String? @db.VarChar(100)
+  address_country_code String? @db.VarChar(2)
+  contract_reference String @db.VarChar(255)
+  relation_type String @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@map("customer_contracts")
+}
+
+model CustomerCourseAccess {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  course_id Int
+  status String @default("active") @db.VarChar(64)
+  granted_via String @default("access_code") @db.VarChar(64)
+  access_code_id Int?
+  granted_at DateTime? @default(now()) @db.Timestamp(0)
+  expires_at DateTime? @db.Timestamp(0)
+  @@unique([customer_id, course_id])
+  @@index([course_id])
+  @@index([customer_id])
+  @@index([access_code_id])
+  @@map("customer_course_access")
+}
+
+model CustomerKyc {
+  kyc_id String @id @db.Char(36)
+  customer_id Int
+  external_kyc_id String @unique @db.VarChar(255)
+  kyc_version Int @default(1)
+  status String @default("pending") @db.VarChar(64)
+  id_type String? @db.VarChar(64)
+  verified_at DateTime? @db.Timestamp(0)
+  expires_at DateTime? @db.Timestamp(0)
+  last_checked_at DateTime? @db.Timestamp(0)
+  rejection_reason String? @db.VarChar(255)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  version_name String @db.VarChar(100)
+  @@unique([customer_id, kyc_version])
+  @@map("customer_kyc")
+}
+
+model CustomerProducts {
+  customer_product_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  customer_id Int
+  product_id String @db.VarChar(36)
+  purchase_date DateTime? @default(now()) @db.Timestamp(0)
+  expiry_date DateTime? @db.Timestamp(0)
+  status String? @default("active") @db.VarChar(64)
+  quantity Int? @default(1)
+  purchase_price Decimal? @db.Decimal(10, 2)
+  payment_method String? @db.VarChar(50)
+  transaction_id String? @db.VarChar(100)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([customer_id, product_id])
+  @@index([product_id])
+  @@map("customer_products")
+}
+
+model CustomerProfileDetails {
+  profile_details_id Int @id @default(autoincrement())
+  customer_id Int @unique
+  location String? @db.VarChar(120)
+  bio String? @db.Text
+  social_links Json?
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  position String? @db.VarChar(120)
+  organization String? @db.VarChar(120)
+  skills Json?
+  experience String? @db.Text
+  documents Json?
+  @@map("customer_profile_details")
+}
+
+model CustomerRegistrations {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  currency String @db.VarChar(10)
+  token String @db.VarChar(255)
+  amount Decimal @db.Decimal(10, 2)
+  payment_method String @db.VarChar(255)
+  network_name String @db.VarChar(255)
+  payment_currency String @db.VarChar(10)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  status String @default("pending") @db.VarChar(64)
+  order_id String @default("0") @db.VarChar(36)
+  @@map("customer_registrations")
+}
+
+model CustomerSectionQuizStatus {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  section_id Int
+  status String @default("not_started") @db.VarChar(64)
+  score Int @default(0)
+  attempts Int @default(0)
+  last_attempt_at DateTime? @db.Timestamp(0)
+  @@unique([customer_id, section_id])
+  @@index([section_id])
+  @@map("customer_section_quiz_status")
+}
+
+model CustomerSubsectionProgress {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  subsection_id Int
+  status String @default("not_started") @db.VarChar(64)
+  completed_at DateTime? @db.Timestamp(0)
+  @@unique([customer_id, subsection_id])
+  @@index([subsection_id])
+  @@map("customer_subsection_progress")
+}
+
+model Customers {
+  customer_id Int @id @default(autoincrement())
+  telegram_user_id BigInt? @unique
+  telegram_username String? @db.VarChar(255)
+  email String @unique @db.VarChar(255)
+  phone String @unique @default("99999999999") @db.VarChar(255)
+  is_active Int? @default(1) @db.SmallInt
+  first_name String @db.VarChar(100)
+  last_name String @db.VarChar(100)
+  profile_picture String? @db.VarChar(255)
+  date_of_birth DateTime? @db.Date
+  gender String? @default("prefer_not_to_say") @db.VarChar(64)
+  is_email_verified Int? @default(0) @db.SmallInt
+  is_phone_verified Int? @default(0) @db.SmallInt
+  email_verified_at DateTime? @db.Timestamp(0)
+  phone_verified_at DateTime? @db.Timestamp(0)
+  two_factor_enabled Int? @default(0) @db.SmallInt
+  referral_code String? @db.VarChar(20)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  deleted_at DateTime? @db.Timestamp(0)
+  is_kyc_verified Int? @default(0) @db.SmallInt
+  signature_url String? @db.VarChar(255)
+  customer_type String @default("individual") @db.VarChar(64)
+  isShippingTheSame Int @default(0) @db.SmallInt
+  referral_index Int? @unique
+  referred_by String? @db.VarChar(255)
+  source String? @db.VarChar(255)
+  telegram_id BigInt? @default(0)
+  @@index([first_name, last_name])
+  @@index([is_active, deleted_at])
+  @@index([telegram_user_id])
+  @@map("customers")
+}
+
+model Events {
+  event_id Int @id @default(autoincrement())
+  event_name String @db.VarChar(255)
+  event_date DateTime @db.Date
+  short_description String @db.Text
+  detailed_content String @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  deleted_at DateTime? @db.Timestamp(0)
+  @@index([event_date])
+  @@index([created_at])
+  @@index([deleted_at])
+  @@map("events")
+}
+
+model ExitExamPayments {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  access_code_id Int
+  registration_id Int?
+  amount Decimal @db.Decimal(10, 2)
+  currency String @default("USD") @db.VarChar(10)
+  payment_status String @default("pending") @db.VarChar(64)
+  transaction_id String? @db.VarChar(255)
+  payment_date DateTime? @db.Timestamp(0)
+  payment_details String? @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([customer_id, access_code_id])
+  @@index([customer_id])
+  @@index([access_code_id])
+  @@index([registration_id])
+  @@index([payment_status])
+  @@index([transaction_id])
+  @@map("exit_exam_payments")
+}
+
+model InterestTags {
+  id Int @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+  category String? @db.VarChar(100)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([category])
+  @@map("interest_tags")
+}
+
+model Interests {
+  id Int @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+  category String? @db.VarChar(100)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([category])
+  @@map("interests")
+}
+
+model InvestorProfiles {
+  id Int @id @default(autoincrement())
+  customer_id Int @unique
+  bio String? @db.Text
+  min_ticket_size Decimal? @db.Decimal(15, 2)
+  max_ticket_size Decimal? @db.Decimal(15, 2)
+  investment_stage_from String? @db.VarChar(64)
+  investment_stage_to String? @db.VarChar(64)
+  hands_on_support Int? @default(0) @db.SmallInt
+  organizations Json?
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([investment_stage_from])
+  @@index([investment_stage_to])
+  @@index([min_ticket_size, max_ticket_size])
+  @@map("investor_profiles")
+}
+
+model Languages {
+  id Int @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+  code String? @db.VarChar(10)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@map("languages")
+}
+
+model LaunchEventRegistrations {
+  id Int @id @default(autoincrement())
+  first_name String @db.VarChar(100)
+  last_name String @db.VarChar(100)
+  email String @db.VarChar(255)
+  phone String @db.VarChar(50)
+  country String @db.VarChar(100)
+  city String @db.VarChar(100)
+  role String @db.VarChar(150)
+  industry String @db.VarChar(150)
+  interests Json
+  goals Json
+  comments String? @db.Text
+  consent Int @default(0) @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([email])
+  @@index([country])
+  @@index([role])
+  @@index([industry])
+  @@index([created_at])
+  @@map("launch_event_registrations")
+}
+
+model NewsletterSubscribers {
+  id Int @id @default(autoincrement())
+  email String @unique @db.VarChar(255)
+  status String @default("active") @db.VarChar(64)
+  subscribed_at DateTime @default(now()) @db.Timestamp(0)
+  unsubscribed_at DateTime? @db.Timestamp(0)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([status])
+  @@index([subscribed_at])
+  @@map("newsletter_subscribers")
+}
+
+model OrderItems {
+  item_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  order_id String @db.VarChar(36)
+  product_id String @db.VarChar(36)
+  quantity Int
+  unit_price Decimal @db.Decimal(10, 2)
+  discount_amount Decimal? @default(0.00) @db.Decimal(10, 2)
+  total_price Decimal @db.Decimal(10, 2)
+  parent_bundle_id String? @db.VarChar(36)
+  shipping_cost Decimal @default(0.00) @db.Decimal(10, 2)
+  shipping_details String? @db.VarChar(36)
+  discount_applied Decimal? @default(0.00) @db.Decimal(10, 2)
+  promo_id String? @db.VarChar(36)
+  customer_id Int
+  productidentifier String @default("0000") @db.VarChar(10)
+  original_price Decimal? @db.Decimal(10, 2)
+  agreementlink String? @db.VarChar(255)
+  @@index([order_id])
+  @@index([product_id])
+  @@map("order_items")
+}
+
+model Orders {
+  order_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  session_id String? @db.VarChar(255)
+  customer_id Int?
+  order_date DateTime? @default(now()) @db.Timestamp(0)
+  subtotal Decimal @db.Decimal(10, 2)
+  shipping_cost Decimal @db.Decimal(10, 2)
+  discount_amount Decimal? @default(0.00) @db.Decimal(10, 2)
+  tax_amount Decimal @db.Decimal(10, 2)
+  total_amount Decimal @db.Decimal(10, 2)
+  shipping_address_id String? @db.VarChar(36)
+  billing_address_id String @db.VarChar(36)
+  payment_status String? @default("pending") @db.VarChar(64)
+  order_status String? @default("new") @db.VarChar(64)
+  tracking_number String? @db.VarChar(50)
+  notes String? @db.Text
+  currency String? @default("CHF") @db.VarChar(3)
+  discount_applied Decimal? @default(0.00) @db.Decimal(10, 2)
+  price_version Int? @default(1)
+  requires_price_confirmation Int? @default(0) @db.SmallInt
+  @@index([customer_id])
+  @@index([order_date])
+  @@index([shipping_address_id])
+  @@index([billing_address_id])
+  @@map("orders")
+}
+
+model PaymentMethodCurrencies {
+  id Int @id @default(autoincrement())
+  payment_method_id String @db.VarChar(50)
+  network_id Int
+  currency_code String @db.VarChar(10)
+  payment_url String? @db.VarChar(255)
+  walletAddress String? @default("0") @db.VarChar(255)
+  @@unique([payment_method_id, network_id, currency_code])
+  @@index([network_id])
+  @@map("payment_method_currencies")
+}
+
+model PaymentMethodNetworks {
+  id Int @id @default(autoincrement())
+  payment_method_id String @db.VarChar(50)
+  network_name String @db.VarChar(100)
+  @@unique([payment_method_id, network_name])
+  @@map("payment_method_networks")
+}
+
+model PaymentScreenshots {
+  id Int @id @default(autoincrement())
+  registration_id Int @unique
+  file_url String @db.VarChar(512)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  @@map("payment_screenshots")
+}
+
+model PaymentTracking {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  access_code_id Int
+  registration_id Int?
+  amount Decimal @default(18.00) @db.Decimal(10, 2)
+  currency String @default("USD") @db.VarChar(10)
+  payment_method String @default("stripe") @db.VarChar(50)
+  payment_status String @default("pending") @db.VarChar(64)
+  transaction_id String? @db.VarChar(255)
+  payment_date DateTime? @db.Timestamp(0)
+  payment_details String? @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([customer_id])
+  @@index([access_code_id])
+  @@index([registration_id])
+  @@index([transaction_id])
+  @@map("payment_tracking")
+}
+
+model PortfolioLinks {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  type String @db.VarChar(64)
+  url String @db.VarChar(500)
+  display_name String? @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([talent_id])
+  @@index([type])
+  @@map("portfolio_links")
+}
+
+model ProductBundles {
+  bundle_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  name String @db.VarChar(100)
+  description String? @db.Text
+  thumbnail_url String? @db.VarChar(255)
+  base_price Decimal @db.Decimal(10, 2)
+  discount Decimal @db.Decimal(5, 2)
+  is_active Int? @default(1) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@map("product_bundles")
+}
+
+model ProductPromos {
+  promo_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  product_id String @db.VarChar(36)
+  code String @unique @db.VarChar(20)
+  discount_type String @db.VarChar(64)
+  discount_value Decimal @db.Decimal(10, 2)
+  start_date DateTime @db.Timestamp(0)
+  end_date DateTime @db.Timestamp(0)
+  max_uses Int?
+  current_uses Int? @default(0)
+  is_active Int? @default(1) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([product_id, is_active])
+  @@map("product_promos")
+}
+
+model Products {
+  product_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  name String @db.VarChar(100)
+  slug String? @unique @db.VarChar(100)
+  description String? @db.Text
+  thumbnail_url String? @db.VarChar(255)
+  base_price Decimal @db.Decimal(10, 2)
+  cost_price Decimal? @db.Decimal(10, 2)
+  tiered_pricing Json?
+  is_active Int? @default(1) @db.SmallInt
+  stock_quantity Int? @default(0)
+  low_stock_threshold Int? @default(5)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  product_type String @db.VarChar(64)
+  tag String @default("PTGR") @db.VarChar(50)
+  subscription String? @db.VarChar(100)
+  @@index([is_active])
+  @@map("products")
+}
+
+model ProjectRequests {
+  id Int @id @default(autoincrement())
+  full_name String @db.VarChar(100)
+  company_name String @db.VarChar(100)
+  email String @db.VarChar(255)
+  phone String @db.VarChar(50)
+  job_title String? @db.VarChar(100)
+  company_size String? @db.VarChar(20)
+  project_details String @db.Text
+  project_type String @db.VarChar(50)
+  project_budget String @db.VarChar(30)
+  project_timeline String @db.VarChar(30)
+  project_stage String? @db.VarChar(20)
+  project_technologies String? @db.VarChar(500)
+  gdpr_consent Int @default(0) @db.SmallInt
+  status String @default("pending") @db.VarChar(64)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([email])
+  @@index([status])
+  @@index([created_at])
+  @@index([project_type])
+  @@map("project_requests")
+}
+
+model Projects {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  client_id Int?
+  title String @db.VarChar(255)
+  description String? @db.Text
+  status String? @default("ongoing") @db.VarChar(64)
+  start_date DateTime? @db.Date
+  end_date DateTime? @db.Date
+  is_verified Int? @default(0) @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([talent_id])
+  @@index([client_id])
+  @@index([status])
+  @@index([is_verified])
+  @@map("projects")
+}
+
+model RequestAssignments {
+  id Int @id @default(autoincrement())
+  request_type String @db.VarChar(64)
+  request_id Int
+  talent_pool_id Int
+  assigned_by String? @db.VarChar(36)
+  assignment_status String @default("pending") @db.VarChar(64)
+  notes String? @db.Text
+  client_feedback String? @db.Text
+  talent_feedback String? @db.Text
+  interview_date DateTime? @db.Timestamp(0)
+  assigned_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  deleted_at DateTime? @db.Timestamp(0)
+  @@unique([request_type, request_id, talent_pool_id, deleted_at])
+  @@index([request_type, request_id])
+  @@index([talent_pool_id])
+  @@index([assignment_status])
+  @@index([assigned_at])
+  @@index([assigned_by])
+  @@index([request_type, request_id, assignment_status, deleted_at])
+  @@map("request_assignments")
+}
+
+model Reservations {
+  reservation_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.Char(36)
+  product_id String @db.VarChar(36)
+  first_name String @db.VarChar(100)
+  last_name String @db.VarChar(100)
+  email String @db.VarChar(255)
+  company_name String? @db.VarChar(255)
+  number_of_people Int
+  notes String? @db.Text
+  reserved_at DateTime? @default(now()) @db.Timestamp(0)
+  status String @default("requested") @db.VarChar(64)
+  scheduled_date DateTime? @db.Timestamp(0)
+  @@unique([email, product_id])
+  @@index([product_id])
+  @@map("reservations")
+}
+
+model Reviews {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  client_id Int
+  project_id Int?
+  rating Int @db.SmallInt
+  comment String? @db.Text
+  is_verified Int? @default(0) @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([talent_id])
+  @@index([client_id])
+  @@index([project_id])
+  @@index([rating])
+  @@index([is_verified])
+  @@index([created_at])
+  @@index([talent_id, is_verified, rating])
+  @@map("reviews")
+}
+
+model Roles {
+  role_id String @id @db.VarChar(255)
+  role_name String @unique @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  @@map("roles")
+}
+
+model Sections {
+  id Int @id @default(autoincrement())
+  chapter_id Int
+  title String @db.VarChar(255)
+  subtitle String? @db.VarChar(255)
+  sort_order Int? @default(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  quiz_required Int @default(0) @db.SmallInt
+  quiz_pass_score Int @default(70)
+  @@index([chapter_id, sort_order])
+  @@map("sections")
+}
+
+model SelfstudyRegistrations {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  access_code_id Int?
+  program_slug String @default("selfstudy-v1") @db.VarChar(64)
+  status String @default("active") @db.VarChar(64)
+  registered_at DateTime? @default(now()) @db.Timestamp(0)
+  certificate_url String? @db.VarChar(255)
+  @@unique([program_slug, customer_id])
+  @@index([customer_id])
+  @@index([access_code_id])
+  @@map("selfstudy_registrations")
+}
+
+model Skills {
+  id Int @id @default(autoincrement())
+  name String @unique @db.VarChar(100)
+  category String? @db.VarChar(100)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([category])
+  @@map("skills")
+}
+
+model SubsectionQuizOptions {
+  id Int @id @default(autoincrement())
+  question_id Int
+  text_html String @db.Text
+  is_correct Int @default(0) @db.SmallInt
+  sort_order Int @default(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([question_id])
+  @@map("subsection_quiz_options")
+}
+
+model SubsectionQuizQuestions {
+  id Int @id @default(autoincrement())
+  subsection_id Int
+  prompt_html String @db.Text
+  sort_order Int @default(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([subsection_id])
+  @@map("subsection_quiz_questions")
+}
+
+model Subsections {
+  id Int @id @default(autoincrement())
+  section_id Int
+  title String @db.VarChar(255)
+  content_html String @db.Text
+  pdf_url String? @db.VarChar(1000)
+  sort_order Int? @default(0)
+  quiz_required Int @default(0) @db.SmallInt
+  quiz_pass_score Int @default(70)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([section_id, sort_order])
+  @@map("subsections")
+}
+
+model TalentInterests {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  interest_id Int
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@unique([talent_id, interest_id])
+  @@index([talent_id])
+  @@index([interest_id])
+  @@map("talent_interests")
+}
+
+model TalentLanguages {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  language_id Int
+  proficiency String? @default("conversational") @db.VarChar(64)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@unique([talent_id, language_id])
+  @@index([talent_id])
+  @@index([language_id])
+  @@map("talent_languages")
+}
+
+model TalentPoolRegistration {
+  id Int @id @default(autoincrement())
+  status Int @default(0) @db.SmallInt
+  full_name String @db.VarChar(255)
+  email String @unique @db.VarChar(255)
+  country String @db.VarChar(100)
+  city String? @db.VarChar(100)
+  phone_number String @db.VarChar(50)
+  age_range String @db.VarChar(50)
+  gender String? @default("Prefer not to say") @db.VarChar(50)
+  education_level String @db.VarChar(100)
+  years_experience String @db.VarChar(50)
+  skills Json
+  spoken_languages Json
+  preferred_work_type String @db.VarChar(50)
+  availability String @db.VarChar(100)
+  heard_about_us String @db.VarChar(100)
+  heard_about_other String? @db.VarChar(255)
+  skills_description String @db.Text
+  cv_file_path String? @db.VarChar(500)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  certifications Json?
+  projects Json?
+  @@index([status])
+  @@index([country])
+  @@index([created_at])
+  @@map("talent_pool_registration")
+}
+
+model TalentProfiles {
+  id Int @id @default(autoincrement())
+  customer_id Int @unique
+  full_name String @db.VarChar(255)
+  title String? @db.VarChar(255)
+  bio String? @db.Text
+  avatar_url String? @db.VarChar(500)
+  location String? @db.VarChar(255)
+  timezone String? @db.VarChar(100)
+  years_experience Int?
+  availability String? @db.VarChar(64)
+  open_to_remote Int? @default(1) @db.SmallInt
+  is_verified Int? @default(0) @db.SmallInt
+  cv_file_path String? @db.VarChar(500)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([is_verified])
+  @@index([availability])
+  @@index([location])
+  @@index([years_experience])
+  @@map("talent_profiles")
+}
+
+model TalentRequests {
+  id Int @id @default(autoincrement())
+  full_name String @db.VarChar(100)
+  company_name String @db.VarChar(100)
+  email String @db.VarChar(255)
+  phone String @db.VarChar(50)
+  job_title String? @db.VarChar(100)
+  company_size String? @db.VarChar(20)
+  about_yourself String @db.Text
+  talent_needed String @db.Text
+  talent_type String @db.VarChar(50)
+  team_size String? @db.VarChar(20)
+  budget_range String @db.VarChar(30)
+  timeline String @db.VarChar(30)
+  work_arrangement String? @db.VarChar(20)
+  experience_level String? @db.VarChar(20)
+  technologies String? @db.VarChar(500)
+  gdpr_consent Int @default(0) @db.SmallInt
+  status String @default("pending") @db.VarChar(64)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([email])
+  @@index([status])
+  @@index([created_at])
+  @@index([talent_type])
+  @@map("talent_requests")
+}
+
+model TalentSkills {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  skill_id Int
+  level Int @default(3) @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@unique([talent_id, skill_id])
+  @@index([talent_id])
+  @@index([skill_id])
+  @@map("talent_skills")
+}
+
+model TelegramTopics {
+  id Int @id @default(autoincrement())
+  group_id Int
+  topic_id Int
+  topic_name String? @db.VarChar(255)
+  topic_type String @db.VarChar(64)
+  is_active Int @default(1) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([group_id, topic_id])
+  @@index([group_id])
+  @@index([topic_type])
+  @@map("telegram_topics")
+}
+
+model TelegramVerificationCodes {
+  id Int @id @default(autoincrement())
+  telegram_user_id BigInt
+  email String @db.VarChar(255)
+  code String @db.VarChar(10)
+  expires_at DateTime @db.Timestamp(0)
+  used Int @default(0) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([telegram_user_id])
+  @@index([email])
+  @@index([code])
+  @@index([expires_at])
+  @@map("telegram_verification_codes")
+}
+
+model TransactionLogs {
+  log_id String @id @db.VarChar(36)
+  level String @default("info") @db.VarChar(64)
+  service String @default("transaction") @db.VarChar(50)
+  message String @db.Text
+  data Json?
+  customer_id String? @db.VarChar(36)
+  order_id String? @db.VarChar(36)
+  transaction_id String? @db.VarChar(36)
+  ip_address String? @db.VarChar(45)
+  user_agent String? @db.Text
+  created_at DateTime @db.Timestamp(0)
+  @@index([level])
+  @@index([service])
+  @@index([customer_id])
+  @@index([order_id])
+  @@index([transaction_id])
+  @@index([created_at])
+  @@map("transaction_logs")
+}
+
+model Transactions {
+  transaction_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  order_id String @unique @db.VarChar(36)
+  amount Decimal @db.Decimal(10, 2)
+  currency String? @default("CHF") @db.VarChar(3)
+  transaction_date DateTime? @default(now()) @db.Timestamp(0)
+  type String @db.VarChar(64)
+  status String? @default("pending") @db.VarChar(64)
+  payment_method String @db.VarChar(64)
+  processor_reference String? @db.VarChar(255)
+  @@index([order_id])
+  @@map("transactions")
+}
+
+model Universities {
+  university_id Int @id @default(autoincrement())
+  university_name String @db.VarChar(255)
+  stamp_image_url String? @db.VarChar(500)
+  certificate_file_url String? @db.VarChar(500)
+  achievement_certificate_file_url String? @db.VarChar(500)
+  is_active Int @default(1) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@index([university_name])
+  @@index([is_active])
+  @@map("universities")
+}
+
+model UserInterests {
+  id Int @id @default(autoincrement())
+  customer_id Int
+  tag_id Int
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  @@unique([customer_id, tag_id])
+  @@index([customer_id])
+  @@index([tag_id])
+  @@map("user_interests")
+}
+
+model Users {
+  user_id String @id @default(dbgenerated("gen_random_uuid()::text")) @db.VarChar(36)
+  customer_id Int? @unique
+  username String @unique @db.VarChar(255)
+  password_hash String @db.VarChar(255)
+  role_id String? @default("fd50497c-19c2-11f0-8461-c89402834315") @db.VarChar(255)
+  last_login_at DateTime? @db.Timestamp(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  token_version Int @default(0)
+  @@index([username])
+  @@map("users")
+}
+
+model WorkExperiences {
+  id Int @id @default(autoincrement())
+  talent_id Int
+  role_title String @db.VarChar(255)
+  company_name String @db.VarChar(255)
+  start_date DateTime @db.Date
+  end_date DateTime? @db.Date
+  is_current Int? @default(0) @db.SmallInt
+  description String? @db.Text
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  @@index([talent_id])
+  @@index([is_current])
+  @@map("work_experiences")
+}
+
+model ProjectPool {
+  id Int @id @default(autoincrement())
+  creator_id String @db.VarChar(36)
+  title String @db.VarChar(255)
+  category String @db.VarChar(100)
+  description String @db.Text
+  deliverables Json
+  timeline String @db.VarChar(100)
+  team_structure String @db.VarChar(255)
+  budget String @db.VarChar(100)
+  funding_goal String? @db.VarChar(100)
+  funding_raised String? @default("0") @db.VarChar(100)
+  mentor_needed Int? @default(0) @db.SmallInt
+  required_skills Json
+  project_logo_url String? @db.VarChar(512)
+  status Int @default(0) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@map("project_pool")
+}
+
+model ProjectApplications {
+  id Int @id @default(autoincrement())
+  project_id Int
+  user_id String @db.VarChar(36)
+  role_type String @db.VarChar(50)
+  motivation String @db.Text
+  contribution_details String? @db.Text
+  status Int @default(0) @db.SmallInt
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([user_id, project_id, role_type])
+  @@map("project_applications")
+}

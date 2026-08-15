@@ -45,12 +45,13 @@ const SectionQuizStatus = {
     if (qs.length === 0) return [];
 
     const qIds = qs.map(q => q.id);
+    const placeholders = qIds.map(() => '?').join(',');
     const [opts] = await db.query(
       `SELECT id, question_id, text_html, is_correct, sort_order
          FROM subsection_quiz_options
-        WHERE question_id IN (?)
+        WHERE question_id IN (${placeholders})
         ORDER BY question_id ASC, sort_order ASC, id ASC`,
-      [qIds]
+      qIds
     );
 
     const byQ = new Map(qs.map(q => [q.id, { ...q, options: [] }]));
