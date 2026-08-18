@@ -4,7 +4,7 @@ const { translateMysql, tableMeta } = require('./mysqlToPostgres');
 // PostgreSQL + Prisma — MySQL is no longer used.
 const logger = require('../utils/logger');
 
-require('dotenv').config();
+require('./loadEnv');
 
 // Keep numeric results close to mysql2 (decimalNumbers: true).
 types.setTypeParser(20, (val) => (val == null ? null : parseInt(val, 10))); // int8

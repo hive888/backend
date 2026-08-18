@@ -124,7 +124,12 @@ const defaultOrigins = [
   'http://hive888.org',
   'http://localhost:3000',
   'http://localhost:3001',
-  'http://localhost:3002'
+  'http://localhost:3002',
+  'http://localhost:3010',
+  'http://localhost:5174',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3010',
+  'http://127.0.0.1:5174'
 ];
 const envOrigins = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')

@@ -1,19 +1,45 @@
 services:
+  hive888-postgres:
+    image: postgres:16
+    container_name: hive888-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:55433:5432"
+    networks: [ptgr-net]
+
+  ptgr-redis:
+    image: redis:7-alpine
+    container_name: ptgr-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:56379:6379"
+    networks: [ptgr-net]
+
   hive888-backend:
     build: .
     container_name: hive888-backend
     restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      REDIS_HOST: ptgr-redis
-      REDIS_PORT: "6379"
-      PORT: "3000"
-    networks:
-      - mainbackend_ptgr-net
+    env_file: [.env]
+    depends_on:
+      hive888-postgres: { condition: service_healthy }
+      ptgr-redis: { condition: service_started }
     ports:
-      - "4004:3000"
+      - "127.0.0.1:4004:3000"
+    networks: [ptgr-net]
+
+volumes:
+  pgdata:
 
 networks:
-  mainbackend_ptgr-net:
-    external: true
+  ptgr-net:

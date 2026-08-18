@@ -1,20 +1,18 @@
-FROM node:20-alpine
+FROM node:20-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+COPY prisma ./prisma
+
+RUN npm ci
+RUN npm prune --omit=dev
 
 COPY . .
 
-EXPOSE 4001
-
-# choose ONE that matches your project
-# If you have "start" in package.json:
+EXPOSE 3000
 CMD ["npm","start"]
-
-# OR if your real entry is app.js:
-# CMD ["node","app.js"]
-
-# OR if your entry is index.js:
-# CMD ["node","index.js"]

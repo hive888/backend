@@ -1,5 +1,5 @@
 // Load environment variables from .env (required for GOOGLE_CLIENT_ID and other config)
-require('dotenv').config();
+require('./config/loadEnv');
 
 const app = require('./app');
 const logger = require('./utils/logger');
