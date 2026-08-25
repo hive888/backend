@@ -32,6 +32,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
     "@aws-sdk/client-s3": "^3.891.0",
     "@grammyjs/ratelimiter": "^1.2.1",
     "@paypal/checkout-server-sdk": "^1.0.3",
