@@ -256,48 +256,52 @@ const adminController = {
       const offset = (parseInt(page) - 1) * parseInt(limit);
       let query = `
         SELECT
-          customer_id,
-          first_name,
-          last_name,
-          email,
-          phone,
-          customer_type,
-          is_active,
-          is_email_verified,
-          is_phone_verified,
-          is_kyc_verified,
-          profile_picture,
-          created_at,
-          updated_at
-        FROM customers
-        WHERE deleted_at IS NULL
+          c.customer_id,
+          c.first_name,
+          c.last_name,
+          c.email,
+          c.phone,
+          c.customer_type,
+          c.is_active,
+          c.is_email_verified,
+          c.is_phone_verified,
+          c.is_kyc_verified,
+          c.profile_picture,
+          c.telegram_user_id,
+          c.telegram_username,
+          c.created_at,
+          c.updated_at,
+          u.user_id
+        FROM customers c
+        LEFT JOIN users u ON u.customer_id = c.customer_id
+        WHERE c.deleted_at IS NULL
       `;
       const params = [];
 
       // Build WHERE clause
       if (search) {
-        query += ` AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR phone LIKE ?)`;
+        query += ` AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.telegram_username LIKE ?)`;
         const searchTerm = `%${search}%`;
-        params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
       }
 
       if (customer_type) {
-        query += ` AND customer_type = ?`;
+        query += ` AND c.customer_type = ?`;
         params.push(customer_type);
       }
 
       if (is_active !== '') {
-        query += ` AND is_active = ?`;
+        query += ` AND c.is_active = ?`;
         params.push(is_active === 'true' ? 1 : 0);
       }
 
       if (is_kyc_verified !== '') {
-        query += ` AND is_kyc_verified = ?`;
+        query += ` AND c.is_kyc_verified = ?`;
         params.push(is_kyc_verified === 'true' ? 1 : 0);
       }
 
       if (is_email_verified !== '') {
-        query += ` AND is_email_verified = ?`;
+        query += ` AND c.is_email_verified = ?`;
         params.push(is_email_verified === 'true' ? 1 : 0);
       }
 
@@ -308,7 +312,7 @@ const adminController = {
 
       // Add sorting and pagination
       const allowedSortFields = ['created_at', 'updated_at', 'first_name', 'last_name', 'email'];
-      const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'created_at';
+      const sortField = allowedSortFields.includes(sort_by) ? `c.${sort_by}` : 'c.created_at';
       const sortDir = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
       query += ` ORDER BY ${sortField} ${sortDir} LIMIT ? OFFSET ?`;
@@ -1119,7 +1123,8 @@ const adminController = {
         expires_at,
         notes,
         payment_amount,
-        payment_currency
+        payment_currency,
+        preferred_payment_method
       } = req.body;
 
       if (!code) {
@@ -1141,7 +1146,8 @@ const adminController = {
         notes,
         created_by: req.user.user_id,
         payment_amount: payment_amount !== undefined ? Number(payment_amount) : undefined,
-        payment_currency: payment_currency || undefined
+        payment_currency: payment_currency || undefined,
+        preferred_payment_method: preferred_payment_method || undefined
       });
 
       logger.info('Admin created access code', {

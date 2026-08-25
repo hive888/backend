@@ -171,7 +171,8 @@ const AccessCode = {
           notes,
           created_by,
           payment_amount,
-          payment_currency
+          payment_currency,
+          preferred_payment_method
         FROM access_codes
         WHERE 1=1
       `;
@@ -244,6 +245,7 @@ const AccessCode = {
           ac.created_by,
           ac.payment_amount,
           ac.payment_currency,
+          ac.preferred_payment_method,
           ac.exit_exam_fee,
           ac.university_id,
           u.university_name as university_full_name,
@@ -275,10 +277,11 @@ const AccessCode = {
           payment_amount,
           payment_currency,
           exit_exam_fee,
-          university_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          university_id,
+          preferred_payment_method
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      
+
       const params = [
         data.code,
         data.course_id || null,
@@ -292,7 +295,8 @@ const AccessCode = {
         data.payment_amount !== undefined ? data.payment_amount : 18.00,
         data.payment_currency || 'USD',
         data.exit_exam_fee !== undefined ? data.exit_exam_fee : 0.00,
-        data.university_id || null
+        data.university_id || null,
+        data.preferred_payment_method || 'stripe'
       ];
 
     try {
@@ -335,7 +339,8 @@ const AccessCode = {
         'payment_amount',
         'payment_currency',
         'exit_exam_fee',
-        'university_id'
+        'university_id',
+        'preferred_payment_method'
       ];
       
       const updates = [];

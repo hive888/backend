@@ -15,4 +15,5 @@ router.post('/reset-password', userController.resetPassword);
 router.get('/roles', authMiddleware.authenticate, authMiddleware.authorize('administrator'), userController.getAllRoles);
 router.post('/roles', authMiddleware.authenticate, authMiddleware.authorize('administrator'), userController.createRole);
 router.get('/roles/statistics', authMiddleware.authenticate, authMiddleware.authorize('administrator'), userController.getRoleStatistics);
+router.post('/:user_id/reset-password', authMiddleware.authenticate, authMiddleware.authorize('administrator'), userController.adminResetPassword);
 module.exports = router;

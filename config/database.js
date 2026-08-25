@@ -132,6 +132,54 @@ prisma
       await prisma.$executeRawUnsafe(
         `ALTER TABLE subsections ADD COLUMN IF NOT EXISTS pdf_url VARCHAR(1000)`
       );
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS preferred_payment_method VARCHAR(20) NOT NULL DEFAULT 'stripe'`
+      );
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS telegram_links (
+          id SERIAL PRIMARY KEY,
+          telegram_user_id BIGINT NOT NULL UNIQUE,
+          telegram_username VARCHAR(255),
+          customer_id INT NOT NULL UNIQUE REFERENCES customers(customer_id) ON DELETE CASCADE,
+          linked_at TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+          unlinked_at TIMESTAMP(0)
+        )
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS link_codes (
+          id SERIAL PRIMARY KEY,
+          code VARCHAR(12) NOT NULL UNIQUE,
+          telegram_user_id BIGINT NOT NULL,
+          telegram_username VARCHAR(255),
+          expires_at TIMESTAMP(0) NOT NULL,
+          used_at TIMESTAMP(0),
+          created_at TIMESTAMP(0) NOT NULL DEFAULT NOW()
+        )
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_link_codes_telegram_user_id
+        ON link_codes(telegram_user_id)
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_link_codes_expires_at
+        ON link_codes(expires_at)
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS telegram_join_requests (
+          id SERIAL PRIMARY KEY,
+          chat_id BIGINT NOT NULL,
+          telegram_user_id BIGINT NOT NULL,
+          telegram_username VARCHAR(255),
+          status VARCHAR(32) NOT NULL DEFAULT 'pending',
+          requested_at TIMESTAMP(0) NOT NULL DEFAULT NOW(),
+          resolved_at TIMESTAMP(0),
+          resolution_reason VARCHAR(255)
+        )
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_telegram_join_requests_lookup
+        ON telegram_join_requests(telegram_user_id, chat_id, status)
+      `);
     } catch (err) {
       logger.error('Database migration failed for courses columns:', err.message);
     }

@@ -1,30 +1,30 @@
 const TelegramBot = require('node-telegram-bot-api');
 const logger = require('../utils/logger');
 const Customer = require('../models/Customer');
-const TelegramVerificationCode = require('../models/telegramVerificationCodeModel');
-const { sendTelegramVerificationCode } = require('../utils/telegramEmail');
+const TelegramCommunityLink = require('../models/telegramCommunityLinkModel');
 
 class TelegramBotService {
   constructor() {
     this.token = process.env.TELEGRAM_BOT_TOKEN;
-    this.privateGroupId = process.env.TELEGRAM_PRIVATE_GROUP_ID;
-    this.privateTopicId = parseInt(process.env.TELEGRAM_PRIVATE_TOPIC_ID || '3');
-    this.publicTopicId = parseInt(process.env.TELEGRAM_PUBLIC_TOPIC_ID || '4');
-    this.userStates = new Map(); // Store user conversation states
+    this.privateGroupId = this.parseChatId(process.env.TELEGRAM_PRIVATE_GROUP_ID);
+    this.publicGroupId = this.parseChatId(process.env.TELEGRAM_PUBLIC_GROUP_ID);
     this.bot = null;
-    
+
     if (!this.token) {
       logger.warn('TELEGRAM_BOT_TOKEN not set - Telegram bot will not start');
       return;
     }
 
-    // Only one process may poll a bot token. Local/dev shares the production token,
-    // so polling is off unless TELEGRAM_ENABLE_POLLING=true.
     this.enablePolling = this.shouldEnablePolling();
-
-    this.init().catch(error => {
+    this.init().catch((error) => {
       logger.error('Failed to initialize Telegram bot:', error);
     });
+  }
+
+  parseChatId(value) {
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   shouldEnablePolling() {
@@ -34,12 +34,27 @@ class TelegramBotService {
     return process.env.NODE_ENV === 'production';
   }
 
+  getFrontendTelegramLinkUrl() {
+    return (
+      process.env.TELEGRAM_LINK_FRONTEND_URL ||
+      process.env.FRONTENDHIVE_URL ||
+      process.env.FRONTEND_URL ||
+      'https://hub.hive888.org/en/profile'
+    );
+  }
+
+  getBotPublicLink() {
+    if (process.env.TELEGRAM_BOT_LINK) return process.env.TELEGRAM_BOT_LINK;
+    if (process.env.TELEGRAM_BOT_USERNAME) return `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}`;
+    return 'https://t.me';
+  }
+
   stopPolling() {
     if (!this.bot) return;
     try {
       this.bot.stopPolling({ cancel: true });
     } catch (_) {
-      // already stopped
+      // ignore
     }
   }
 
@@ -48,904 +63,258 @@ class TelegramBotService {
       if (!this.enablePolling) {
         this.bot = new TelegramBot(this.token, { polling: false });
         this.setupHandlers();
-        logger.info('Telegram Bot Service initialized without polling (set TELEGRAM_ENABLE_POLLING=true to receive updates locally)', {
+        logger.info('Telegram Bot Service initialized without polling', {
           privateGroupId: this.privateGroupId,
-          env: process.env.NODE_ENV
+          publicGroupId: this.publicGroupId,
         });
         return;
       }
 
-      // Delete any existing webhook first (webhook and polling can't run simultaneously)
       const tempBot = new TelegramBot(this.token, { polling: false });
       try {
         await tempBot.deleteWebHook();
-        logger.info('Deleted existing webhook (if any)');
-      } catch (webhookError) {
-        logger.debug('No webhook to delete');
+      } catch (_) {
+        // ignore
       }
-      
       try {
-        await tempBot.close().catch(err => {
-          logger.debug('Error closing temp bot (ignored):', err.message);
-        });
-      } catch (closeError) {
-        logger.debug('Error closing temp bot (ignored):', closeError.message);
+        await tempBot.close();
+      } catch (_) {
+        // ignore
       }
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       this.bot = new TelegramBot(this.token, { polling: true });
-      
       this.setupHandlers();
       logger.info('Telegram Bot Service initialized', {
         privateGroupId: this.privateGroupId,
-        privateTopicId: this.privateTopicId,
-        publicTopicId: this.publicTopicId
+        publicGroupId: this.publicGroupId,
       });
     } catch (error) {
-      // Handle network/connection errors gracefully
-      if (error.code === 'EFATAL' || error.name === 'AggregateError' || error.message?.includes('EFATAL')) {
-        logger.error('Telegram bot connection failed (network/API issue). Bot will not start.', {
-          error: error.message,
-          code: error.code,
-          cause: error.cause?.message || error.cause
-        });
-        logger.warn('Possible causes: Network connectivity issue, invalid bot token, or Telegram API unavailable. Please check your internet connection and bot token.');
-      } else {
-        logger.error('Failed to initialize Telegram bot:', {
-          error: error.message,
-          code: error.code,
-          stack: error.stack
-        });
-      }
       this.bot = null;
+      logger.error('Failed to initialize Telegram bot:', {
+        error: error.message,
+        code: error.code,
+      });
     }
   }
 
   setupHandlers() {
     if (!this.bot) return;
 
-    // Start command
-    this.bot.onText(/\/start/, async (msg) => {
-      await this.handleStart(msg);
+    this.bot.onText(/\/start(?:\s+.*)?$/, async (msg) => {
+      await this.sendLinkingMessage(msg.chat.id, msg.from);
     });
-
-    // Register command
-    this.bot.onText(/\/register/, async (msg) => {
-      await this.handleRegister(msg);
+    this.bot.onText(/\/link$/, async (msg) => {
+      await this.sendLinkingMessage(msg.chat.id, msg.from);
     });
-
-    // Link command
-    this.bot.onText(/\/link/, async (msg) => {
-      await this.handleLink(msg);
+    this.bot.onText(/\/status$/, async (msg) => {
+      await this.handleStatus(msg.chat.id, msg.from);
     });
-
-    // Status command
-    this.bot.onText(/\/status/, async (msg) => {
-      await this.handleStatus(msg);
+    this.bot.onText(/\/help$/, async (msg) => {
+      await this.handleHelp(msg.chat.id);
     });
-
-    // Help command
-    this.bot.onText(/\/help/, async (msg) => {
-      await this.handleHelp(msg);
+    this.bot.on('chat_join_request', async (request) => {
+      await this.handleJoinRequest(request);
     });
-
-    // Handle all text messages (for conversation flow)
-    this.bot.on('message', async (msg) => {
-      if (msg.text && !msg.text.startsWith('/')) {
-        await this.handleMessage(msg);
-      }
-    });
-
-    // Error handling
     this.bot.on('polling_error', (error) => {
       if (error.code === 'ETELEGRAM' && error.response?.statusCode === 409) {
-        if (!this._stoppedForConflict) {
-          this._stoppedForConflict = true;
-          logger.warn('Telegram bot conflict: another instance is already polling this token. Stopping local polling so logs are not flooded.');
-          this.stopPolling();
-        }
+        logger.warn('Telegram bot conflict detected. Stopping local polling.');
+        this.stopPolling();
         return;
       }
-      
-      // Handle 429 rate limiting - log as warning, bot will retry automatically
-      if (error.code === 'ETELEGRAM' && error.response?.statusCode === 429) {
-        const retryAfter = error.response?.body?.parameters?.retry_after || 'unknown';
-        logger.warn(`Telegram bot rate limited. Retry after ${retryAfter} seconds.`, {
-          message: error.message
-        });
-        // Don't throw - bot library will handle retry
-        return;
-      }
-      
-      // Handle network/connection errors gracefully
-      if (error.code === 'EFATAL' || error.name === 'AggregateError' || error.message?.includes('EFATAL')) {
-        logger.error('Telegram bot polling error: Network/connection issue', {
-          error: error.message,
-          code: error.code,
-          cause: error.cause?.message || error.cause
-        });
-        logger.warn('Telegram bot will retry automatically when connection is restored.');
-        return;
-      }
-      
-      logger.error('Telegram bot polling error:', {
-        error: error.message,
-        code: error.code,
-        stack: error.stack
-      });
+      logger.error('Telegram bot polling error:', { error: error.message, code: error.code });
     });
   }
 
-  async handleStart(msg) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-    const username = msg.from.username || msg.from.first_name;
-
+  async sendLinkingMessage(chatId, from) {
+    const telegramUserId = from.id;
+    const username = from.username || from.first_name || null;
     try {
-      // Check if user is registered
-      const customer = await Customer.findByTelegramId(telegramUserId);
-
-      if (customer) {
-        const inviteLink = await this.getGroupInviteLink();
-        await this.bot.sendMessage(chatId, 
-          `<b>Hey ${customer.first_name || username}, welcome back!</b>\n\n` +
-          `You're all set and ready to go!\n` +
-          `You've got full access to our exclusive Hive888 community!\n\n` +
-          (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
-          `/help - See all commands\n` +
-          `/status - Check your account`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
-        );
-      } else {
-        await this.bot.sendMessage(chatId,
-          `<b>Welcome to Hive888!</b>\n\n` +
-          `HIVE888 is an emerging interactive platform that brings together talent, enterprises, and institutions to collaborate within a trusted Web3 ecosystem.\n\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `<b>Get Started:</b>\n\n` +
-          `/register - Create your account (2 minutes!)\n` +
-          `/link - Already have an account? Link it here!\n\n` +
-          `━━━━━━━━━━━━━━━━\n\n` +
-          `/help - Need help? We've got you covered!`,
-          { parse_mode: 'HTML' }
-        );
-      }
-    } catch (error) {
-      logger.error('Error in handleStart:', error);
-      await this.bot.sendMessage(chatId,
-        `<b>Oops! Something went wrong</b>\n\n` +
-        `Please try again in a moment!\n\n` +
-        `<i>We're working on it!</i>`,
-        { parse_mode: 'HTML' }
-      );
-    }
-  }
-
-  async handleRegister(msg) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-
-    try {
-      // Check if already registered
-      const existing = await Customer.findByTelegramId(telegramUserId);
-      if (existing) {
-        const inviteLink = await this.getGroupInviteLink();
-        await this.bot.sendMessage(chatId, 
-          `You are already registered!\n\n` +
-          (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
-          `Use /status to check your account details.`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
-        );
+      const existing = await TelegramCommunityLink.findLinkByTelegramUserId(telegramUserId);
+      if (existing && !existing.deleted_at) {
+        const statusText =
+          `<b>Your Telegram is already linked.</b>\n\n` +
+          `Hive888 account: <b>${existing.email}</b>\n` +
+          `Private group access: request to join the managed groups and I will approve you automatically.\n\n` +
+          `Need to relink? Contact support first.`;
+        await this.bot.sendMessage(chatId, statusText, { parse_mode: 'HTML' });
         return;
       }
 
-      // Set state to registration
-      this.userStates.set(telegramUserId, { 
-        action: 'register', 
-        step: 'email',
-        data: {} 
+      const { code, expiresAt } = await TelegramCommunityLink.createLinkCode(telegramUserId, username, 15);
+      const text =
+        `<b>Link your Telegram to Hive888</b>\n\n` +
+        `1. Sign in to <b>hub.hive888.org</b>\n` +
+        `2. Open your profile page\n` +
+        `3. Enter this one-time code:\n\n` +
+        `<code>${code}</code>\n\n` +
+        `This code expires at <b>${expiresAt.toISOString().replace('T', ' ').slice(0, 16)} UTC</b>.\n\n` +
+        `<a href="${this.getFrontendTelegramLinkUrl()}">Open Hive888 profile</a>\n` +
+        `<a href="${this.getBotPublicLink()}">Open Telegram bot</a>`;
+
+      await this.bot.sendMessage(chatId, text, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
       });
-
-      await this.bot.sendMessage(chatId,
-        `<b>Awesome! Let's Get You Registered!</b>\n\n` +
-        `<b>Step 1:</b> What's your email address?\n\n` +
-        `Just send me your email and we'll get started!\n\n` +
-        `<i>Don't worry, we'll keep it safe!</i>`,
-        { parse_mode: 'HTML' }
-      );
     } catch (error) {
-      logger.error('Error in handleRegister:', error);
-      await this.bot.sendMessage(chatId,
-        `<b>Oops! Something went wrong</b>\n\n` +
-        `Please try again in a moment!\n\n` +
-        `<i>We're working on it!</i>`,
-        { parse_mode: 'HTML' }
-      );
+      logger.error('Failed to send Telegram linking message', { telegramUserId, error: error.message });
+      await this.bot.sendMessage(chatId, 'Unable to prepare your link code right now. Please try again in a moment.');
     }
   }
 
-  async handleLink(msg) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-
+  async handleStatus(chatId, from) {
+    const telegramUserId = from.id;
     try {
-      // Check if already linked
-      const existing = await Customer.findByTelegramId(telegramUserId);
-      if (existing) {
-        const inviteLink = await this.getGroupInviteLink();
-        await this.bot.sendMessage(chatId,
-          `<b>Already connected!</b>\n\n` +
-          `Your Telegram is linked and you're good to go!\n\n` +
-          (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
-          `/status - View your account\n` +
-          `/help - All commands`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
+      const link = await TelegramCommunityLink.findLinkByTelegramUserId(telegramUserId);
+      if (!link || link.deleted_at) {
+        await this.bot.sendMessage(
+          chatId,
+          `Your Telegram is not linked yet.\n\nUse /start to get a one-time code, then enter it on your Hive888 profile page.`
         );
         return;
       }
 
-      // Set state to linking
-      this.userStates.set(telegramUserId, {
-        action: 'link',
-        step: 'email',
-        data: {}
-      });
-
-      await this.bot.sendMessage(chatId,
-        `<b>Great! Let's Link Your Account!</b>\n\n` +
-          `Connect your Telegram to your Hive888 account in seconds!\n\n` +
-        `<b>What's your registered email?</b>\n\n` +
-        `<i>We'll send you a quick verification code to confirm it's really you!</i>`,
+      await this.bot.sendMessage(
+        chatId,
+        `<b>Telegram linked</b>\n\n` +
+        `Hive888 account: <b>${link.email}</b>\n` +
+        `Linked at: <b>${new Date(link.linked_at).toISOString().replace('T', ' ').slice(0, 16)} UTC</b>\n\n` +
+        `Request to join the managed groups and I will approve you automatically.`,
         { parse_mode: 'HTML' }
       );
     } catch (error) {
-      logger.error('Error in handleLink:', error);
-      await this.bot.sendMessage(chatId,
-        `<b>Oops! Something went wrong</b>\n\n` +
-        `Please try again in a moment!\n\n` +
-        `<i>We're working on it!</i>`,
-        { parse_mode: 'HTML' }
-      );
+      logger.error('Failed to load Telegram status', { telegramUserId, error: error.message });
+      await this.bot.sendMessage(chatId, 'Unable to load your Telegram status right now.');
     }
   }
 
-  async handleStatus(msg) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-
-    try {
-      const customer = await Customer.findByTelegramId(telegramUserId);
-
-        if (!customer) {
-        await this.bot.sendMessage(chatId,
-          `<b>Hey there!</b>\n\n` +
-          `You're not registered yet, but that's easy to fix!\n\n` +
-          `/register - Create your account\n` +
-          `/link - Link existing account\n\n` +
-          `Let's get you started!`,
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      const inviteLink = await this.getGroupInviteLink();
-      const statusMessage = 
-        `<b>YOUR ACCOUNT DASHBOARD</b>\n\n` +
-        `━━━━━━━━━━━━━━━━\n` +
-        `<b>NAME:</b> ${customer.first_name || ''} ${customer.last_name || ''}\n` +
-        `<b>EMAIL:</b> ${customer.email || 'Not set'}\n` +
-        `<b>PHONE:</b> ${customer.phone || 'Not set'}\n` +
-        `━━━━━━━━━━━━━━━━\n\n` +
-        `<b>VERIFICATION STATUS</b>\n\n` +
-        `${customer.is_email_verified ? '' : ''} Email: ${customer.is_email_verified ? '<b>Verified</b>' : '<i>Pending</i>'}\n` +
-        `${customer.is_phone_verified ? '' : ''} Phone: ${customer.is_phone_verified ? '<b>Verified</b>' : '<i>Pending</i>'}\n` +
-        `${customer.is_kyc_verified ? '' : ''} KYC: ${customer.is_kyc_verified ? '<b>Verified</b>' : '<i>Pending</i>'}\n\n` +
-        `━━━━━━━━━━━━━━━━\n\n` +
-        `<b>YOU'RE ALL SET!</b>\n\n` +
-        (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
-        `Keep building!`;
-
-      await this.bot.sendMessage(chatId, statusMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
-    } catch (error) {
-      logger.error('Error in handleStatus:', error);
-      await this.bot.sendMessage(chatId,
-        `<b>Oops! Something went wrong</b>\n\n` +
-        `Please try again in a moment!\n\n` +
-        `<i>We're working on it!</i>`,
-        { parse_mode: 'HTML' }
-      );
-    }
+  async handleHelp(chatId) {
+    await this.bot.sendMessage(
+      chatId,
+      `<b>Hive888 Telegram Access</b>\n\n` +
+      `/start - Generate a one-time link code\n` +
+      `/link - Generate a new link code\n` +
+      `/status - Check whether your Telegram is linked\n` +
+      `/help - Show this help message`,
+      { parse_mode: 'HTML' }
+    );
   }
 
-  async handleHelp(msg) {
-    const chatId = msg.chat.id;
+  async handleJoinRequest(request) {
+    const chatId = Number(request.chat.id);
+    const telegramUserId = Number(request.from.id);
+    const username = request.from.username || request.from.first_name || null;
 
-    const helpMessage = 
-      `<b>Hive888 BOT COMMANDS</b>\n\n` +
-      `━━━━━━━━━━━━━━━━\n\n` +
-      `/start - Welcome & get started\n` +
-      `/register - Create your account (2 min!)\n` +
-      `/link - Link existing account\n` +
-      `/status - View your account info\n` +
-      `/help - Show this menu\n\n` +
-      `━━━━━━━━━━━━━━━━\n\n` +
-      `<b>Quick Tips:</b>\n` +
-      `All commands are super easy to use!\n` +
-      `Need help? Just type any command!\n` +
-      `Ready to join? Use /register or /link!\n\n` +
-      `━━━━━━━━━━━━━━━━\n\n` +
-      `<b>About Hive888</b>\n` +
-      `An emerging interactive platform that brings together talent, enterprises, and institutions to collaborate within a trusted Web3 ecosystem.\n\n` +
-      `Questions? We're here to help!`;
-
-    await this.bot.sendMessage(chatId, helpMessage, { parse_mode: 'HTML' });
-  }
-
-  async handleMessage(msg) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-    const text = msg.text.trim();
-    const state = this.userStates.get(telegramUserId);
-
-    if (!state) {
-      // No active conversation
+    if (![this.privateGroupId, this.publicGroupId].includes(chatId)) {
       return;
     }
 
     try {
-      if (state.action === 'register') {
-        await this.handleRegisterFlow(msg, state, text);
-      } else if (state.action === 'link') {
-        await this.handleLinkFlow(msg, state, text);
-      }
-    } catch (error) {
-      logger.error('Error in handleMessage:', error);
-      this.userStates.delete(telegramUserId);
-      await this.bot.sendMessage(chatId,
-        `<b>Oops! Something went wrong</b>\n\n` +
-        `Let's start fresh!\n\n` +
-        `/register - Create account\n` +
-        `/link - Link account\n\n` +
-        `<i>Don't worry, we'll get you sorted!</i>`,
-        { parse_mode: 'HTML' }
-      );
-    }
-  }
+      const joinRequestId = await TelegramCommunityLink.createOrRefreshJoinRequest(chatId, telegramUserId, username);
+      const link = await TelegramCommunityLink.findLinkByTelegramUserId(telegramUserId);
 
-  async handleRegisterFlow(msg, state, text) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-
-    if (state.step === 'email') {
-      // Validate email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(text)) {
-        await this.bot.sendMessage(chatId,
-          `<b>Oops! That doesn't look right</b>\n\n` +
-          `Please enter a valid email address:\n\n` +
-          `<i>Example: yourname@email.com</i>`,
-          { parse_mode: 'HTML' }
-        );
+      if (link && !link.deleted_at) {
+        await this.approveJoinRequest(chatId, telegramUserId);
+        await TelegramCommunityLink.resolveJoinRequest(joinRequestId, 'approved', 'Already linked');
         return;
       }
 
-      state.data.email = text;
-      state.step = 'phone';
-      this.userStates.set(telegramUserId, state);
-
-        await this.bot.sendMessage(chatId,
-          `<b>Perfect! Got it!</b>\n\n` +
-          `<b>Step 2:</b> What's your phone number?\n\n` +
-          `Include your country code, like this:\n` +
-          `<code>+1234567890</code>\n\n` +
-          `Almost there!`,
-          { parse_mode: 'HTML' }
-        );
-    } else if (state.step === 'phone') {
-      // Validate phone (basic validation)
-      if (!text.startsWith('+') || text.length < 10) {
-        await this.bot.sendMessage(chatId,
-          `<b>Hmm, that format doesn't work</b>\n\n` +
-          `Please include your country code:\n\n` +
-          `<code>+1234567890</code>\n\n` +
-          `<i>Don't forget the + at the start!</i>`,
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      state.data.phone = text;
-      state.step = 'first_name';
-      this.userStates.set(telegramUserId, state);
-
-      await this.bot.sendMessage(chatId,
-        `<b>Awesome! Phone number saved!</b>\n\n` +
-        `<b>Step 3:</b> What's your first name?\n\n` +
-        `Just type your first name below!`,
-        { parse_mode: 'HTML' }
-      );
-    } else if (state.step === 'first_name') {
-      if (text.length < 1 || text.length > 100) {
-        await this.bot.sendMessage(chatId,
-          `<b>Too long or too short!</b>\n\n` +
-          `First name should be 1-100 characters\n\n` +
-          `Try again, keep it simple!`,
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      state.data.first_name = text;
-      state.step = 'last_name';
-      this.userStates.set(telegramUserId, state);
-
-      await this.bot.sendMessage(chatId,
-        `<b>Great! First name saved!</b>\n\n` +
-        `<b>Last step:</b> What's your last name?\n\n` +
-        `We're so close! Just one more thing!`,
-        { parse_mode: 'HTML' }
-      );
-    } else if (state.step === 'last_name') {
-      if (text.length < 1 || text.length > 100) {
-        await this.bot.sendMessage(chatId,
-          `<b>Too long or too short!</b>\n\n` +
-          `Last name should be 1-100 characters\n\n` +
-          `Almost done! Try again!`,
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      state.data.last_name = text;
-      this.userStates.set(telegramUserId, state);
-
-      // Call API to create customer
-      await this.completeRegistration(chatId, telegramUserId, msg.from.username, state.data);
-    }
-  }
-
-  async handleLinkFlow(msg, state, text) {
-    const chatId = msg.chat.id;
-    const telegramUserId = msg.from.id;
-
-    if (state.step === 'email') {
-      // Validate email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(text)) {
-        await this.bot.sendMessage(chatId,
-          `<b>Hmm, that email format doesn't work</b>\n\n` +
-          `Please enter a valid email address:\n\n` +
-          `<i>Example: yourname@email.com</i>`,
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      try {
-        // Check if customer exists
-        const customer = await Customer.findByEmail(text);
-        if (!customer) {
-          await this.bot.sendMessage(chatId,
-            `<b>Hmm, we couldn't find that email</b>\n\n` +
-            `Double-check your email address\n` +
-            `Or use /register to create a new account!\n\n` +
-            `<i>No worries, happens to the best of us!</i>`,
-            { parse_mode: 'HTML' }
-          );
-          this.userStates.delete(telegramUserId);
-          return;
-        }
-
-        // Generate verification code
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        await TelegramVerificationCode.create(telegramUserId, text, code);
-        
-        // Send verification email
-        await sendTelegramVerificationCode(text, code);
-
-        state.data.email = text;
-        state.step = 'verify_code';
-        this.userStates.set(telegramUserId, state);
-
-        await this.bot.sendMessage(chatId,
-          `<b>Perfect! Found your account!</b>\n\n` +
-          `<b>Check your email!</b> We just sent you a verification code.\n\n` +
-          `<b>Enter the 6-digit code here:</b>\n\n` +
-          `<i>Tip: Check your spam folder if you don't see it!</i>`,
-          { parse_mode: 'HTML' }
-        );
-      } catch (error) {
-        logger.error('Error in link flow:', error);
-        await this.bot.sendMessage(chatId,
-          `<b>Oops! Something went wrong</b>\n\n` +
-          `Please try again or use /link to start over!\n\n` +
-          `<i>Don't worry, we'll get it sorted!</i>`,
-          { parse_mode: 'HTML' }
-        );
-        this.userStates.delete(telegramUserId);
-      }
-    } else if (state.step === 'verify_code') {
-      const code = text.trim();
-
-      try {
-        const verification = await TelegramVerificationCode.verifyAndUse(telegramUserId, code);
-        
-        if (!verification.valid) {
-          await this.bot.sendMessage(chatId,
-            `<b>Oops! That code didn't work</b>\n\n` +
-            `The code might be wrong or expired (10 minutes)\n\n` +
-            `Try entering it again, or use /link to get a new one!`,
-            { parse_mode: 'HTML' }
-          );
-          return;
-        }
-
-        // Link Telegram account
-        const customer = await Customer.findByEmail(verification.email);
-        if (!customer) {
-          await this.bot.sendMessage(chatId,
-            `<b>Oops! Something went wrong</b>\n\n` +
-            `We couldn't find your account. Please try again!\n\n` +
-            `Or use /link to start over.`,
-            { parse_mode: 'HTML' }
-          );
-          this.userStates.delete(telegramUserId);
-          return;
-        }
-
-        await Customer.linkTelegramAccount(customer.customer_id, telegramUserId, msg.from.username);
-        this.userStates.delete(telegramUserId);
-
-        // Invite user to private group
-        await this.inviteUserToGroup(telegramUserId);
-
-        // Get invite link
-        const inviteLink = await this.getGroupInviteLink();
-
-        await this.bot.sendMessage(chatId,
-          `<b>SUCCESS! Account Linked!</b>\n\n` +
-          `Welcome to the family, <b>${customer.first_name || 'Champion'}</b>!\n\n` +
-          `Your Telegram is now connected to Hive888!\n\n` +
-          `━━━━━━━━━━━━━━━━\n\n` +
-          `<b>You're IN! Welcome to our exclusive community!</b>\n\n` +
-          (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
-          `━━━━━━━━━━━━━━━━\n\n` +
-          `/status - See your account\n` +
-          `/help - All commands`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
-        );
-      } catch (error) {
-        logger.error('Error verifying code:', error);
-        await this.bot.sendMessage(chatId,
-          `<b>Hmm, something went wrong</b>\n\n` +
-          `Please try again or use /link to start fresh!\n\n` +
-          `<i>We're here to help!</i>`,
-          { parse_mode: 'HTML' }
-        );
-        this.userStates.delete(telegramUserId);
-      }
-    }
-  }
-
-  async completeRegistration(chatId, telegramUserId, telegramUsername, data) {
-    try {
-      // Check if email or phone already exists
-      const existingByEmail = await Customer.findByEmail(data.email);
-      if (existingByEmail) {
-        this.userStates.delete(telegramUserId);
-        await this.bot.sendMessage(chatId,
-          'An account with this email already exists. Use /link to link your Telegram account instead.'
-        );
-        return;
-      }
-
-      // Create customer directly
-      const customerData = {
-        email: data.email,
-        phone: data.phone,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        telegram_user_id: telegramUserId,
-        telegram_username: telegramUsername,
-        source: 'telegram',
-        is_email_verified: 0,
-        is_phone_verified: 0
-      };
-
-      const newCustomer = await Customer.create(customerData);
-      
-      this.userStates.delete(telegramUserId);
-
-      // Invite user to private group
-      await this.inviteUserToGroup(telegramUserId);
-
-      // Get invite link
-      const inviteLink = await this.getGroupInviteLink();
-
-      await this.bot.sendMessage(chatId,
-        `<b>CONGRATULATIONS!</b>\n\n` +
-        `<b>Welcome to Hive888, ${data.first_name}!</b>\n\n` +
-        `Your account is LIVE and ready to go!\n\n` +
-        `━━━━━━━━━━━━━━━━\n\n` +
-        `<b>YOU'RE NOW PART OF THE COMMUNITY!</b>\n\n` +
-          (inviteLink ? `<b>Join the community:</b>\n${inviteLink}\n\n` : '') +
-        `━━━━━━━━━━━━━━━━\n\n` +
-        `/status - Check your account\n` +
-        `/help - See all commands\n\n` +
-        `Let's build the future of Web3 together!`,
-        { parse_mode: 'HTML', disable_web_page_preview: true }
+      const { code } = await TelegramCommunityLink.createLinkCode(telegramUserId, username, 15);
+      await this.declineJoinRequest(chatId, telegramUserId, 'Telegram account is not linked to Hive888');
+      await TelegramCommunityLink.resolveJoinRequest(joinRequestId, 'declined', 'Telegram account is not linked to Hive888');
+      await this.safeDirectMessage(
+        telegramUserId,
+        `<b>Join request declined</b>\n\n` +
+        `To access Hive888 community groups, link your Telegram to your Hive888 account first.\n\n` +
+        `One-time code: <code>${code}</code>\n` +
+        `Then enter it here: <a href="${this.getFrontendTelegramLinkUrl()}">Open Hive888 profile</a>`,
+        { disable_web_page_preview: true }
       );
     } catch (error) {
-      logger.error('Error completing registration:', error);
-      this.userStates.delete(telegramUserId);
-
-      let errorMessage = '';
-      if (error.code === 'ER_DUP_ENTRY') {
-        if (error.message.includes('email')) {
-          errorMessage = `<b>Hey! That email is already registered!</b>\n\n` +
-            `Use /link to connect your Telegram instead!\n\n` +
-            `It's super quick!`;
-        } else if (error.message.includes('phone')) {
-          errorMessage = `<b>That phone number is already registered!</b>\n\n` +
-            `Use /link to connect your Telegram instead!\n\n` +
-            `Let's get you connected!`;
-        }
-      } else {
-        errorMessage = `<b>Hmm, registration didn't work</b>\n\n` +
-          `Please try again or contact support!\n\n` +
-          `<i>We're here to help you!</i>`;
-      }
-
-      await this.bot.sendMessage(chatId, errorMessage, { parse_mode: 'HTML' });
-    }
-  }
-
-  async inviteUserToGroup(telegramUserId) {
-    if (!this.privateGroupId || !this.bot) return;
-
-    try {
-      // Invite user to private group
-      await this.bot.addChatMember(this.privateGroupId, telegramUserId);
-
-      logger.info('User invited to private group', { telegramUserId });
-    } catch (error) {
-      // User might already be in the group, or bot doesn't have permissions
-      logger.warn('Could not invite user to group', { telegramUserId, error: error.message });
-    }
-  }
-
-  /**
-   * Get or create invite link for the private group
-   */
-  async getGroupInviteLink() {
-    if (!this.privateGroupId || !this.bot) return null;
-
-    try {
-      // Try to export/create invite link
-      const inviteLink = await this.bot.exportChatInviteLink(this.privateGroupId);
-      return inviteLink;
-    } catch (error) {
-      // Bot might not have permissions, or link already exists
-      logger.warn('Could not create/get invite link', { error: error.message });
-      return null;
-    }
-  }
-
-  /**
-   * Send message to private list topic (admin only)
-   */
-  async sendToPrivateList(message) {
-    if (!this.bot || !this.privateGroupId || !this.privateTopicId) {
-      throw new Error('Bot or private topic not configured');
-    }
-
-    try {
-      await this.bot.sendMessage(this.privateGroupId, message, {
-        message_thread_id: this.privateTopicId,
-        parse_mode: 'HTML'
+      logger.error('Failed to handle chat join request', {
+        chatId,
+        telegramUserId,
+        error: error.message,
       });
-      return true;
-    } catch (error) {
-      logger.error('Error sending to private list:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Send message to public list topic (all members)
-   */
-  async sendToPublicList(message) {
-    if (!this.bot || !this.privateGroupId || !this.publicTopicId) {
-      throw new Error('Bot or public topic not configured');
-    }
-
-    try {
-      await this.bot.sendMessage(this.privateGroupId, message, {
-        message_thread_id: this.publicTopicId,
-        parse_mode: 'HTML'
-      });
-      return true;
-    } catch (error) {
-      logger.error('Error sending to public list:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Stop the bot
-   */
-  stop() {
-    if (this.bot && this.bot.stopPolling) {
-      this.bot.stopPolling();
-      logger.info('Telegram bot stopped');
-    }
-  }
-
-  /**
-   * Ban user from group (admin only)
-   */
-  async banUserFromGroup(telegramUserId, reason = null) {
-    if (!this.bot || !this.privateGroupId) {
-      throw new Error('Bot or group not configured');
-    }
-
-    try {
-      await this.bot.banChatMember(this.privateGroupId, telegramUserId);
-      logger.info('User banned from group', { telegramUserId, reason });
-      return true;
-    } catch (error) {
-      logger.error('Error banning user from group:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Unban user from group (admin only)
-   */
-  async unbanUserFromGroup(telegramUserId) {
-    if (!this.bot || !this.privateGroupId) {
-      throw new Error('Bot or group not configured');
-    }
-
-    try {
-      await this.bot.unbanChatMember(this.privateGroupId, telegramUserId, { only_if_banned: true });
-      logger.info('User unbanned from group', { telegramUserId });
-      return true;
-    } catch (error) {
-      logger.error('Error unbanning user from group:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Kick user from group (admin only)
-   */
-  async kickUserFromGroup(telegramUserId) {
-    if (!this.bot || !this.privateGroupId) {
-      throw new Error('Bot or group not configured');
-    }
-
-    try {
-      await this.bot.banChatMember(this.privateGroupId, telegramUserId);
-      // Unban immediately to allow rejoin
-      await this.bot.unbanChatMember(this.privateGroupId, telegramUserId, { only_if_banned: true });
-      logger.info('User kicked from group', { telegramUserId });
-      return true;
-    } catch (error) {
-      logger.error('Error kicking user from group:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get chat member info
-   */
-  async getChatMember(telegramUserId) {
-    if (!this.bot || !this.privateGroupId) {
-      throw new Error('Bot or group not configured');
-    }
-
-    try {
-      const member = await this.bot.getChatMember(this.privateGroupId, telegramUserId);
-      return member;
-    } catch (error) {
-      logger.error('Error getting chat member:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Send bulk message to private list topic
-   */
-  async sendBulkMessageToPrivateList(messages) {
-    if (!this.bot || !this.privateGroupId || !this.privateTopicId) {
-      throw new Error('Bot or private topic not configured');
-    }
-
-    const results = [];
-    for (const message of messages) {
       try {
-        await this.bot.sendMessage(this.privateGroupId, message, {
-          message_thread_id: this.privateTopicId,
-          parse_mode: 'HTML'
-        });
-        results.push({ success: true, message });
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        logger.error('Error sending bulk message to private list:', error);
-        results.push({ success: false, message, error: error.message });
+        await this.declineJoinRequest(chatId, telegramUserId, 'Unable to validate request');
+      } catch (_) {
+        // ignore
       }
     }
-    return results;
   }
 
-  /**
-   * Send bulk message to public list topic
-   */
-  async sendBulkMessageToPublicList(messages) {
-    if (!this.bot || !this.privateGroupId || !this.publicTopicId) {
-      throw new Error('Bot or public topic not configured');
-    }
+  async approveJoinRequest(chatId, telegramUserId) {
+    if (!this.bot) return false;
+    await this.bot.approveChatJoinRequest(chatId, telegramUserId);
+    logger.info('Approved Telegram join request', { chatId, telegramUserId });
+    return true;
+  }
 
-    const results = [];
-    for (const message of messages) {
+  async declineJoinRequest(chatId, telegramUserId, reason = null) {
+    if (!this.bot) return false;
+    await this.bot.declineChatJoinRequest(chatId, telegramUserId);
+    logger.info('Declined Telegram join request', { chatId, telegramUserId, reason });
+    return true;
+  }
+
+  async approvePendingRequestsForTelegramUser(telegramUserId) {
+    const pending = await TelegramCommunityLink.getPendingJoinRequests(telegramUserId);
+    const approvedChats = [];
+
+    for (const request of pending) {
       try {
-        await this.bot.sendMessage(this.privateGroupId, message, {
-          message_thread_id: this.publicTopicId,
-          parse_mode: 'HTML'
-        });
-        results.push({ success: true, message });
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await this.approveJoinRequest(Number(request.chat_id), telegramUserId);
+        await TelegramCommunityLink.resolveJoinRequest(request.id, 'approved', 'Linked on Hive888');
+        approvedChats.push(Number(request.chat_id));
       } catch (error) {
-        logger.error('Error sending bulk message to public list:', error);
-        results.push({ success: false, message, error: error.message });
+        logger.warn('Could not approve pending join request', {
+          telegramUserId,
+          chatId: request.chat_id,
+          error: error.message,
+        });
       }
     }
-    return results;
+
+    return approvedChats;
   }
 
-  /**
-   * Send direct message to user
-   */
-  async sendDirectMessage(telegramUserId, message, options = {}) {
-    if (!this.bot) {
-      throw new Error('Bot not configured');
-    }
-
+  async safeDirectMessage(telegramUserId, message, options = {}) {
+    if (!this.bot) return false;
     try {
       await this.bot.sendMessage(telegramUserId, message, {
         parse_mode: 'HTML',
-        ...options
+        ...options,
       });
-      logger.info('Direct message sent', { telegramUserId });
       return true;
     } catch (error) {
-      logger.error('Error sending direct message:', error);
-      throw error;
+      logger.warn('Could not DM Telegram user', { telegramUserId, error: error.message });
+      return false;
     }
   }
 
-  /**
-   * Get group members count
-   */
-  async getGroupMembersCount() {
-    if (!this.bot || !this.privateGroupId) {
-      throw new Error('Bot or group not configured');
+  async removeUserFromManagedGroups(telegramUserId) {
+    if (!this.bot) return [];
+    const chatIds = [this.privateGroupId, this.publicGroupId].filter(Boolean);
+    const removed = [];
+
+    for (const chatId of chatIds) {
+      try {
+        await this.bot.banChatMember(chatId, telegramUserId);
+        await this.bot.unbanChatMember(chatId, telegramUserId, { only_if_banned: true });
+        removed.push(chatId);
+      } catch (error) {
+        logger.warn('Could not remove Telegram user from managed group', {
+          chatId,
+          telegramUserId,
+          error: error.message,
+        });
+      }
     }
 
-    try {
-      const chat = await this.bot.getChat(this.privateGroupId);
-      return chat.members_count || 0;
-    } catch (error) {
-      logger.error('Error getting group members count:', error);
-      throw error;
-    }
+    return removed;
   }
 }
 
-// Export singleton instance
 let botServiceInstance = null;
 
 function getTelegramBotService() {
@@ -957,5 +326,5 @@ function getTelegramBotService() {
 
 module.exports = {
   TelegramBotService,
-  getTelegramBotService
+  getTelegramBotService,
 };

@@ -10,6 +10,7 @@ const Section = require('../models/sectionModel');
 const Subsection = require('../models/subsectionModel');
 const CustomerProgress = require('../models/customerProgressModel');
 const { CoursePaymentService } = require('../config/coursePaymentService');
+const { ChapaPaymentService } = require('../config/chapaPaymentService');
 const PaymentTracking = require('../models/paymentTrackingModel');
 const ExitExamPayment = require('../models/ExitExamPayment');
 const University = require('../models/University');
@@ -235,6 +236,10 @@ exports.checkCourseAccessFromToken = async (req, res) => {
     
     // If payment is required but not completed, create payment record and return payment URL
     if (paymentRequired) {
+      const preferredGateway = String(lockedCode.preferred_payment_method || 'stripe').toLowerCase() === 'chapa'
+        ? 'chapa'
+        : 'stripe';
+
       // Create or get payment record
       if (!existingPayment) {
         paymentId = await PaymentTracking.create(conn, {
@@ -242,7 +247,7 @@ exports.checkCourseAccessFromToken = async (req, res) => {
           access_code_id: lockedCode.id,
           amount: codeAmount,
           currency: codeCurrency,
-          payment_method: 'stripe',
+          payment_method: preferredGateway,
           payment_status: 'pending',
           payment_details: {
             description: `Course Access Payment for ${lockedCode.code}`,
@@ -253,19 +258,20 @@ exports.checkCourseAccessFromToken = async (req, res) => {
         });
         paymentStatus = 'pending';
       }
-      
+
       await conn.commit();
-      
+
       // Generate unique payment reference ID
       const paymentReference = `AC-${lockedCode.id}-${customer.customer_id}-${Date.now()}`;
-      
+
       // Generate payment URLs
       const successUrl = `${process.env.FRONTEND_URL || 'https://hub.hive888.org/education/self-study'}`;
       const cancelUrl = `${process.env.FRONTEND_URL || 'https://hub.hive888.org'}`;
-      
+
       try {
-        // Create Stripe checkout session using NEW CoursePaymentService
-        const paymentResult = await CoursePaymentService.createCourseAccessCheckoutSession(
+        // Create a checkout session with whichever gateway this access code prefers
+        const gatewayService = preferredGateway === 'chapa' ? ChapaPaymentService : CoursePaymentService;
+        const paymentResult = await gatewayService.createCourseAccessCheckoutSession(
           codeAmount, // Amount
           codeCurrency, // Currency
           paymentReference, // Payment reference
@@ -283,8 +289,8 @@ exports.checkCourseAccessFromToken = async (req, res) => {
           successUrl,
           cancelUrl
         );
-        
-        // Update payment record with Stripe session ID
+
+        // Update payment record with the gateway's session/reference ID
         const updateConn = await db.getConnection();
         try {
           await PaymentTracking.updateStatus(
@@ -293,17 +299,24 @@ exports.checkCourseAccessFromToken = async (req, res) => {
             'pending',
             paymentResult.sessionId, // Use as transaction_id
             null,
-            {
-              stripe_session_id: paymentResult.sessionId,
-              payment_reference: paymentReference,
-              checkout_url: paymentResult.url,
-              stripe_checkout_url: paymentResult.url
-            }
+            preferredGateway === 'chapa'
+              ? {
+                  chapa_tx_ref: paymentResult.sessionId,
+                  payment_reference: paymentReference,
+                  checkout_url: paymentResult.url,
+                  chapa_checkout_url: paymentResult.url
+                }
+              : {
+                  stripe_session_id: paymentResult.sessionId,
+                  payment_reference: paymentReference,
+                  checkout_url: paymentResult.url,
+                  stripe_checkout_url: paymentResult.url
+                }
           );
         } finally {
           updateConn.release();
         }
-        
+
         return res.status(200).json({
           success: true,
           decision: 'PAYMENT_REQUIRED',
@@ -316,11 +329,13 @@ exports.checkCourseAccessFromToken = async (req, res) => {
             status: paymentStatus,
             amount: codeAmount,
             currency: codeCurrency,
+            payment_method: preferredGateway,
             access_code: lockedCode.code,
             university_name: lockedCode.university_name,
             checkout_url: paymentResult.url,
-            stripe_session_id: paymentResult.sessionId,
-            stripe_checkout_url: paymentResult.url
+            ...(preferredGateway === 'chapa'
+              ? { chapa_checkout_url: paymentResult.url, chapa_amount: codeAmount, chapa_currency: codeCurrency }
+              : { stripe_session_id: paymentResult.sessionId, stripe_checkout_url: paymentResult.url })
           },
           customer_info: {
             customer_id: customer.customer_id,
@@ -330,10 +345,10 @@ exports.checkCourseAccessFromToken = async (req, res) => {
           },
           instructions: 'Please complete the payment to activate your registration.'
         });
-        
+
       } catch (paymentError) {
         logger.error('Course payment session creation failed:', paymentError);
-        
+
         return res.status(500).json({
           success: false,
           code: 'PAYMENT_GATEWAY_ERROR',

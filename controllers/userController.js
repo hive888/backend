@@ -538,10 +538,59 @@ const userController = {
                 error: 'Failed to retrieve roles'
             });
         }
+    },
+
+    async adminResetPassword(req, res) {
+        try {
+            const { user_id } = req.params;
+            const { newPassword } = req.body;
+
+            if (!newPassword) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'New password is required',
+                    code: 'VALIDATION_ERROR'
+                });
+            }
+
+            if (!isStrongPassword(newPassword)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Password must be at least 8 characters and include uppercase, lowercase, and a number',
+                    code: 'WEAK_PASSWORD'
+                });
+            }
+
+            const user = await User.findById(Number(user_id));
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'User not found',
+                    code: 'USER_NOT_FOUND'
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+            await User.update(user.user_id, { password_hash: hashedPassword });
+
+            logger.info('Admin force-reset password', {
+                targetUserId: user.user_id,
+                adminUserId: req.user?.user_id
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: `Password reset successfully for ${user.username}`
+            });
+        } catch (err) {
+            logger.error('Admin reset password error:', { error: err.message });
+            return res.status(500).json({
+                success: false,
+                error: 'Internal server error',
+                code: 'INTERNAL_ERROR'
+            });
+        }
     }
-
-
- 
 };
 
 module.exports = userController;

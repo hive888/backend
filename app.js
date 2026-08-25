@@ -27,6 +27,7 @@ const newsletterRoutes = require('./routes/newsletterRoutes');
 const privateGroupRoutes = require('./routes/privateGroupRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const eventRoutes = require('./routes/eventRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 const authMiddleware = require('./middleware/authMiddleware');
 const logger = require('./utils/logger');
 const app = express();
@@ -40,13 +41,20 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // 1. Body parsers
-// Stripe webhooks require the raw request body for signature verification.
-// We capture it only for the Stripe webhook route so other endpoints behave normally.
+// Stripe and Chapa webhooks require the raw request body for signature verification.
+// We capture it only for those webhook routes so other endpoints behave normally.
+function isRawBodyWebhookRoute(originalUrl) {
+  return !!originalUrl && (
+    originalUrl.startsWith('/api/webhook/stripe-webhook') ||
+    originalUrl.startsWith('/api/webhook/chapa-webhook')
+  );
+}
+
 app.use(express.json({
   limit: '1000kb',
   verify: (req, _res, buf) => {
     try {
-      if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/stripe-webhook')) {
+      if (isRawBodyWebhookRoute(req.originalUrl)) {
         req.rawBody = buf;
       }
     } catch (_) {
@@ -63,8 +71,8 @@ app.use(bodyValidationMiddleware);
 // 2. Improved Sanitization Middleware
 app.use((req, res, next) => {
   try {
-    // IMPORTANT: Do not mutate Stripe webhook payloads (breaks signature verification + may corrupt data)
-    if (req.originalUrl && req.originalUrl.startsWith('/api/webhook/stripe-webhook')) {
+    // IMPORTANT: Do not mutate Stripe/Chapa webhook payloads (breaks signature verification + may corrupt data)
+    if (isRawBodyWebhookRoute(req.originalUrl)) {
       return next();
     }
 
@@ -201,6 +209,7 @@ app.use('/api/partners', require('./routes/partnerRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/audit', auditRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/chat', chatRoutes);
 const uploadStaticHeaders = (req, res, next) => {
   res.removeHeader('X-Frame-Options');
   const frameAncestors = ["'self'", ...allowedOrigins.filter((origin) => origin.startsWith('http'))].join(' ');

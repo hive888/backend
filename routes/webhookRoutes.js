@@ -10,6 +10,7 @@ const { stripe } = require('../config/coursePaymentService');
 
 // ADD THIS LINE
 const coursePaymentController = require('../controllers/coursePaymentWebhookController');
+const chapaWebhookController = require('../controllers/chapaWebhookController');
 
 // Test welcome email endpoint (GET or POST)
 router.get('/test-welcome-email', async (req, res) => {
@@ -124,5 +125,7 @@ router.post('/stripe-webhook', (req, res, next) => {
   next();
   
 }, reservationController.handleStripeWebhook);
+
+router.post('/chapa-webhook', chapaWebhookController.handleChapaWebhook);
 
 module.exports = router;

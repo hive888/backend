@@ -1,271 +1,240 @@
 const Customer = require('../models/Customer');
-const TelegramVerificationCode = require('../models/telegramVerificationCodeModel');
-const { sendTelegramVerificationCode } = require('../utils/telegramEmail');
+const TelegramCommunityLink = require('../models/telegramCommunityLinkModel');
 const logger = require('../utils/logger');
+const { getTelegramBotService } = require('../services/telegramBotService');
+
+function getBotLinkBase() {
+  if (process.env.TELEGRAM_BOT_LINK) return process.env.TELEGRAM_BOT_LINK;
+  if (process.env.TELEGRAM_BOT_USERNAME) return `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}`;
+  return 'https://t.me';
+}
 
 const telegramController = {
-  /**
-   * Register a new customer from Telegram
-   * POST /api/telegram/register
-   */
-  async register(req, res) {
+  async requestLinkCode(req, res) {
     try {
-      const { telegram_user_id, telegram_username, email, phone, first_name, last_name } = req.body;
-
-      // Validate required fields
-      if (!telegram_user_id || !email || !phone || !first_name || !last_name) {
-        return res.status(400).json({
+      const customerId = req.user?.customer_id;
+      if (!customerId) {
+        return res.status(401).json({
           success: false,
-          error: 'Missing required fields',
-          code: 'VALIDATION_ERROR',
-          message: 'telegram_user_id, email, phone, first_name, and last_name are required'
+          error: 'Authenticated customer account required',
+          code: 'AUTH_REQUIRED',
         });
       }
 
-      // Check if Telegram ID is already linked
-      const existingByTelegram = await Customer.findByTelegramId(telegram_user_id);
-      if (existingByTelegram) {
-        return res.status(409).json({
-          success: false,
-          error: 'Telegram account already linked',
-          code: 'DUPLICATE_TELEGRAM',
-          message: 'This Telegram account is already linked to a customer account'
+      const current = await TelegramCommunityLink.findLinkByCustomerId(customerId);
+      if (current) {
+        return res.status(200).json({
+          success: true,
+          message: 'Telegram account already linked',
+          data: {
+            linked: true,
+            telegram_user_id: Number(current.telegram_user_id),
+            telegram_username: current.telegram_username || null,
+            linked_at: current.linked_at,
+          },
         });
       }
 
-      // Check if email already exists
-      const existingByEmail = await Customer.findByEmail(email);
-      if (existingByEmail) {
-        return res.status(409).json({
-          success: false,
-          error: 'Email already registered',
-          code: 'DUPLICATE_EMAIL',
-          message: 'An account with this email already exists'
-        });
-      }
-
-      // Create customer
-      const customerData = {
-        email,
-        phone,
-        first_name,
-        last_name,
-        telegram_user_id,
-        telegram_username,
-        source: 'telegram',
-        is_email_verified: 0,
-        is_phone_verified: 0
-      };
-
-      const newCustomer = await Customer.create(customerData);
-
-      logger.info('Customer registered via Telegram', {
-        customerId: newCustomer.customer_id,
-        telegramUserId: telegram_user_id,
-        email
-      });
-
-      res.status(201).json({
+      return res.status(200).json({
         success: true,
-        message: 'Customer registered successfully',
+        message: 'Open the bot and request a Telegram link code',
         data: {
-          customer_id: newCustomer.customer_id,
-          email: newCustomer.email,
-          first_name: newCustomer.first_name,
-          last_name: newCustomer.last_name
-        }
+          linked: false,
+          bot_link: getBotLinkBase(),
+        },
       });
     } catch (error) {
-      logger.error('Telegram registration error:', error);
-
-      if (error.code === 'ER_DUP_ENTRY') {
-        return res.status(409).json({
-          success: false,
-          error: 'Duplicate entry',
-          code: 'DUPLICATE_ENTRY',
-          message: error.message.includes('email') 
-            ? 'An account with this email already exists'
-            : 'An account with this phone number already exists'
-        });
-      }
-
-      res.status(500).json({
+      logger.error('Telegram requestLinkCode error:', error);
+      return res.status(500).json({
         success: false,
-        error: 'Failed to register customer',
-        code: 'SERVER_ERROR'
+        error: 'Failed to prepare Telegram linking instructions',
+        code: 'SERVER_ERROR',
       });
     }
   },
 
-  /**
-   * Link Telegram account to existing customer
-   * POST /api/telegram/link
-   */
-  async link(req, res) {
+  async confirmLink(req, res) {
     try {
-      const { telegram_user_id, telegram_username, email, code } = req.body;
+      const customerId = req.user?.customer_id;
+      const code = String(req.body?.code || '').trim();
 
-      if (!telegram_user_id || !email || !code) {
+      if (!customerId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authenticated customer account required',
+          code: 'AUTH_REQUIRED',
+        });
+      }
+
+      if (!code) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields',
+          error: 'Link code is required',
           code: 'VALIDATION_ERROR',
-          message: 'telegram_user_id, email, and code are required'
         });
       }
 
-      // Verify code
-      const verification = await TelegramVerificationCode.verifyAndUse(telegram_user_id, code);
-      if (!verification.valid || verification.email !== email) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid or expired verification code',
-          code: 'INVALID_CODE'
-        });
-      }
-
-      // Find customer by email
-      const customer = await Customer.findByEmail(email);
-      if (!customer) {
+      const customer = await Customer.findById(customerId);
+      if (!customer || customer.deleted_at) {
         return res.status(404).json({
           success: false,
-          error: 'Customer not found',
-          code: 'NOT_FOUND'
+          error: 'Customer account not found',
+          code: 'CUSTOMER_NOT_FOUND',
         });
       }
 
-      // Check if Telegram ID is already linked to another account
-      const existingByTelegram = await Customer.findByTelegramId(telegram_user_id);
-      if (existingByTelegram && existingByTelegram.customer_id !== customer.customer_id) {
-        return res.status(409).json({
-          success: false,
-          error: 'Telegram account already linked',
-          code: 'DUPLICATE_TELEGRAM',
-          message: 'This Telegram account is already linked to another account'
-        });
-      }
-
-      // Link Telegram account
-      await Customer.linkTelegramAccount(customer.customer_id, telegram_user_id, telegram_username);
-
-      logger.info('Telegram account linked', {
-        customerId: customer.customer_id,
-        telegramUserId: telegram_user_id,
-        email
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'Telegram account linked successfully',
-        data: {
-          customer_id: customer.customer_id,
-          email: customer.email
-        }
-      });
-    } catch (error) {
-      logger.error('Telegram link error:', error);
-
-      res.status(500).json({
-        success: false,
-        error: 'Failed to link Telegram account',
-        code: 'SERVER_ERROR'
-      });
-    }
-  },
-
-  /**
-   * Request verification code for linking
-   * POST /api/telegram/request-code
-   */
-  async requestCode(req, res) {
-    try {
-      const { telegram_user_id, email } = req.body;
-
-      if (!telegram_user_id || !email) {
+      const consumed = await TelegramCommunityLink.consumeLinkCode(code);
+      if (!consumed.ok) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields',
-          code: 'VALIDATION_ERROR',
-          message: 'telegram_user_id and email are required'
+          error: consumed.reason === 'expired' ? 'Link code has expired' : 'Invalid link code',
+          code: consumed.reason === 'expired' ? 'CODE_EXPIRED' : 'INVALID_CODE',
         });
       }
 
-      // Check if customer exists
-      const customer = await Customer.findByEmail(email);
-      if (!customer) {
-        return res.status(404).json({
-          success: false,
-          error: 'Customer not found',
-          code: 'NOT_FOUND',
-          message: 'No account found with this email address'
-        });
+      const row = consumed.row;
+      await TelegramCommunityLink.upsertLink({
+        telegramUserId: Number(row.telegram_user_id),
+        telegramUsername: row.telegram_username,
+        customerId,
+      });
+      await Customer.linkTelegramAccount(customerId, Number(row.telegram_user_id), row.telegram_username || null);
+
+      const botService = getTelegramBotService();
+      let approvedChats = [];
+      if (botService) {
+        approvedChats = await botService.approvePendingRequestsForTelegramUser(Number(row.telegram_user_id));
       }
 
-      // Generate verification code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      await TelegramVerificationCode.create(telegram_user_id, email, code, 10); // 10 minutes expiry
-
-      // Send verification email
-      await sendTelegramVerificationCode(email, code);
-
-      logger.info('Verification code requested', {
-        telegramUserId: telegram_user_id,
-        email
+      logger.info('Telegram account linked to Hive888 customer', {
+        customerId,
+        telegramUserId: Number(row.telegram_user_id),
+        approvedChats,
       });
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        message: 'Verification code sent to email'
+        message: approvedChats.length
+          ? 'Telegram linked and pending join request approved'
+          : 'Telegram linked successfully',
+        data: {
+          linked: true,
+          telegram_user_id: Number(row.telegram_user_id),
+          telegram_username: row.telegram_username || null,
+          approved_chats: approvedChats,
+        },
       });
     } catch (error) {
-      logger.error('Request code error:', error);
-
-      res.status(500).json({
+      logger.error('Telegram confirmLink error:', error);
+      const status = error.code === 'LINK_CONFLICT' ? 409 : 500;
+      return res.status(status).json({
         success: false,
-        error: 'Failed to send verification code',
-        code: 'SERVER_ERROR'
+        error: error.message || 'Failed to link Telegram account',
+        code: error.code || 'SERVER_ERROR',
       });
     }
   },
 
-  /**
-   * Check if Telegram user is registered
-   * GET /api/telegram/check/:telegram_user_id
-   */
+  async getLinkStatus(req, res) {
+    try {
+      const customerId = req.user?.customer_id;
+      if (!customerId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authenticated customer account required',
+          code: 'AUTH_REQUIRED',
+        });
+      }
+
+      const link = await TelegramCommunityLink.findLinkByCustomerId(customerId);
+      return res.status(200).json({
+        success: true,
+        data: {
+          linked: !!link,
+          telegram_user_id: link ? Number(link.telegram_user_id) : null,
+          telegram_username: link?.telegram_username || null,
+          linked_at: link?.linked_at || null,
+        },
+      });
+    } catch (error) {
+      logger.error('Telegram getLinkStatus error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to load Telegram link status',
+        code: 'SERVER_ERROR',
+      });
+    }
+  },
+
+  async unlink(req, res) {
+    try {
+      const customerId = req.user?.customer_id;
+      if (!customerId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authenticated customer account required',
+          code: 'AUTH_REQUIRED',
+        });
+      }
+
+      const link = await TelegramCommunityLink.findLinkByCustomerId(customerId);
+      await TelegramCommunityLink.unlinkByCustomerId(customerId);
+      await Customer.linkTelegramAccount(customerId, null, null);
+
+      if (link?.telegram_user_id) {
+        const botService = getTelegramBotService();
+        if (botService) {
+          await botService.removeUserFromManagedGroups(Number(link.telegram_user_id));
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Telegram account unlinked successfully',
+      });
+    } catch (error) {
+      logger.error('Telegram unlink error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to unlink Telegram account',
+        code: 'SERVER_ERROR',
+      });
+    }
+  },
+
   async check(req, res) {
     try {
-      const telegramUserId = parseInt(req.params.telegram_user_id);
-
+      const telegramUserId = parseInt(req.params.telegram_user_id, 10);
       if (!telegramUserId) {
         return res.status(400).json({
           success: false,
           error: 'Invalid telegram_user_id',
-          code: 'VALIDATION_ERROR'
+          code: 'VALIDATION_ERROR',
         });
       }
 
-      const customer = await Customer.findByTelegramId(telegramUserId);
-
-      res.status(200).json({
+      const link = await TelegramCommunityLink.findLinkByTelegramUserId(telegramUserId);
+      return res.status(200).json({
         success: true,
-        registered: !!customer,
-        data: customer ? {
-          customer_id: customer.customer_id,
-          email: customer.email,
-          first_name: customer.first_name,
-          last_name: customer.last_name
-        } : null
+        linked: !!link,
+        data: link ? {
+          customer_id: link.customer_id,
+          email: link.email,
+          first_name: link.first_name,
+          last_name: link.last_name,
+          telegram_username: link.telegram_username || null,
+          linked_at: link.linked_at,
+        } : null,
       });
     } catch (error) {
       logger.error('Telegram check error:', error);
-
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
-        error: 'Failed to check registration status',
-        code: 'SERVER_ERROR'
+        error: 'Failed to check Telegram registration status',
+        code: 'SERVER_ERROR',
       });
     }
-  }
+  },
 };
 
 module.exports = telegramController;

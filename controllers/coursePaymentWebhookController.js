@@ -51,32 +51,23 @@ exports.handleStripeWebhook = async (req, res) => {
 };
 
 /**
- * Process course access payment and create registration
+ * Shared completion logic for a confirmed course-access payment, regardless of
+ * which gateway (Stripe or Chapa) processed it: marks PaymentTracking completed,
+ * creates the SelfStudyRegistration if needed, increments access-code usage, and
+ * upserts CustomerCourseAccess.
+ *
+ * @param {object} opts
+ * @param {number} opts.customerId
+ * @param {number} opts.accessCodeId
+ * @param {string} opts.transactionId - gateway session/tx ID, stored as transaction_id
+ * @param {object} opts.payment - the PaymentTracking row already looked up by the caller
+ * @param {object} [opts.paymentDetails] - gateway-specific fields merged into payment_details
  */
-async function processCourseAccessPayment(session) {
+async function completeCourseAccessPayment({ customerId, accessCodeId, transactionId, payment, paymentDetails = {} }) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    
-    const metadata = session.metadata;
-    const customerId = parseInt(metadata.customer_id);
-    const accessCodeId = parseInt(metadata.access_code_id);
-    
-    console.log('Processing course access payment', { customerId, accessCodeId });
-    
-    // Find payment record by Stripe session ID first (most reliable)
-    let payment = await PaymentTracking.getByStripeSessionId(session.id);
-    
-    // Fallback to customer + access code lookup
-    if (!payment) {
-      payment = await PaymentTracking.getByCustomerAndAccessCode(customerId, accessCodeId);
-    }
-    
-    if (!payment) {
-      console.error('Payment record not found for session', session.id, 'customer', customerId, 'access code', accessCodeId);
-      throw new Error(`Payment record not found`);
-    }
-    
+
     // CRITICAL: Check if already processed to prevent duplicate processing
     if (payment.payment_status === 'completed' && payment.registration_id) {
       console.log('Payment already processed and registration exists', {
@@ -84,71 +75,63 @@ async function processCourseAccessPayment(session) {
         registrationId: payment.registration_id
       });
       await conn.commit();
-      return;
+      return { alreadyProcessed: true, paymentId: payment.id, registrationId: payment.registration_id };
     }
-    
+
     // Update payment status to completed
     const updateResult = await PaymentTracking.updateStatus(
       conn,
       payment.id,
       'completed',
-      session.id,
+      transactionId,
       new Date(),
-      {
-        stripe_payment_intent: session.payment_intent,
-        stripe_customer: session.customer,
-        amount_paid: session.amount_total ? session.amount_total / 100 : null,
-        currency: session.currency,
-        payment_method: session.payment_method_types?.[0] || 'card',
-        stripe_status: session.payment_status,
-        stripe_session_status: session.status,
-        webhook_processed_at: new Date().toISOString()
-      }
+      { ...paymentDetails, webhook_processed_at: new Date().toISOString() }
     );
-    
+
     if (updateResult === 0) {
       throw new Error('Failed to update payment status in database');
     }
-    
+
     console.log('Payment status updated to completed', { paymentId: payment.id });
-    
+
     // Check if registration already exists
     const existingReg = await SelfStudyRegistration.findByCustomer(conn, customerId);
     let accessCode = null;
-    
+    let registrationId;
+
     if (!existingReg) {
       // Fetch access code details
       accessCode = await AccessCode.getById(accessCodeId);
       if (!accessCode) {
         throw new Error(`Access code ${accessCodeId} not found`);
       }
-      
+
       // Check access code validity
       if (accessCode.is_active !== 1) {
         throw new Error(`Access code ${accessCode.code} is not active`);
       }
-      
+
       if (accessCode.expires_at && new Date(accessCode.expires_at) < new Date()) {
         throw new Error(`Access code ${accessCode.code} has expired`);
       }
-      
+
       // Check max uses
       if (accessCode.max_uses !== null && accessCode.used_count >= accessCode.max_uses) {
         throw new Error(`Access code ${accessCode.code} has reached maximum uses`);
       }
-      
+
       // Create registration
-      const registrationId = await SelfStudyRegistration.create(conn, {
+      registrationId = await SelfStudyRegistration.create(conn, {
         customer_id: customerId,
         access_code_id: accessCodeId
       });
-      
+
       // Update payment with registration ID
       await PaymentTracking.updateRegistrationId(conn, payment.id, registrationId);
-      
+
       // Increment access code usage
       await AccessCode.incrementUsage(conn, accessCodeId);
-      
+
       console.log(`Registration created successfully`, {
         registrationId,
         customerId,
@@ -156,12 +139,13 @@ async function processCourseAccessPayment(session) {
         paymentId: payment.id
       });
     } else {
+      registrationId = existingReg.id;
       // Update payment with existing registration ID
-      await PaymentTracking.updateRegistrationId(conn, payment.id, existingReg.id);
-      
+      await PaymentTracking.updateRegistrationId(conn, payment.id, registrationId);
+
       console.log(`Customer already registered`, {
         customerId,
-        registrationId: existingReg.id,
+        registrationId,
         paymentId: payment.id
       });
     }
@@ -184,20 +168,63 @@ async function processCourseAccessPayment(session) {
         access_code_id: accessCodeId
       });
     }
-    
+
     await conn.commit();
     console.log('Course access payment processing completed successfully', {
       customerId,
       paymentId: payment.id
     });
-    
+
+    return { alreadyProcessed: false, paymentId: payment.id, registrationId };
+
   } catch (err) {
     await conn.rollback();
-    console.error('processCourseAccessPayment error:', err.message);
+    console.error('completeCourseAccessPayment error:', err.message);
     throw err;
   } finally {
     conn.release();
   }
+}
+
+/**
+ * Stripe-specific: locate the payment record for a completed checkout session,
+ * then hand off to the shared completion logic above.
+ */
+async function processCourseAccessPayment(session) {
+  const metadata = session.metadata;
+  const customerId = parseInt(metadata.customer_id);
+  const accessCodeId = parseInt(metadata.access_code_id);
+
+  console.log('Processing course access payment', { customerId, accessCodeId });
+
+  // Find payment record by Stripe session ID first (most reliable)
+  let payment = await PaymentTracking.getByStripeSessionId(session.id);
+
+  // Fallback to customer + access code lookup
+  if (!payment) {
+    payment = await PaymentTracking.getByCustomerAndAccessCode(customerId, accessCodeId);
+  }
+
+  if (!payment) {
+    console.error('Payment record not found for session', session.id, 'customer', customerId, 'access code', accessCodeId);
+    throw new Error(`Payment record not found`);
+  }
+
+  await completeCourseAccessPayment({
+    customerId,
+    accessCodeId,
+    transactionId: session.id,
+    payment,
+    paymentDetails: {
+      stripe_payment_intent: session.payment_intent,
+      stripe_customer: session.customer,
+      amount_paid: session.amount_total ? session.amount_total / 100 : null,
+      currency: session.currency,
+      payment_method: session.payment_method_types?.[0] || 'card',
+      stripe_status: session.payment_status,
+      stripe_session_status: session.status
+    }
+  });
 }
 
 /**
@@ -362,3 +389,7 @@ exports.checkRegistrationStatus = async (req, res) => {
     });
   }
 };
+
+// Exposed so other gateway webhook handlers (e.g. chapaWebhookController.js)
+// can reuse the same registration-completion logic as the Stripe webhook.
+exports.completeCourseAccessPayment = completeCourseAccessPayment;

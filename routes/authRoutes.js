@@ -283,58 +283,6 @@ router.post('/logout', authMiddleware.authenticate, authValidator.logoutValidati
         });
     }
 });
-router.post('/check-static-password', async (req, res) => {
-    try {
-        // Check if request body exists
-        if (!req.body || typeof req.body !== 'object') {
-            return res.status(400).json({ 
-                success: false,
-                error: 'Request body is required',
-                code: 'MISSING_BODY'
-            });
-        }
-
-        const { password } = req.body || {};
-
-        // Validate input
-        if (!password) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'Password is required',
-                code: 'VALIDATION_ERROR'
-            });
-        }
-
-        // MD5 hash of the static password "PTGR2025!"
-        const staticPasswordMd5 = '08836cc0be8a5b90cc64ad60bb0eeb4a'; // MD5 hash of "PTGR2025!"
-
-        // Create MD5 hash of the provided password
-        const crypto = require('crypto');
-        const providedPasswordMd5 = crypto.createHash('md5').update(password).digest('hex');
-
-        // Compare the hashes
-        if (providedPasswordMd5 === staticPasswordMd5) {
-            return res.json({
-                success: true,
-                message: 'Password matches'
-            });
-        } else {
-            return res.status(401).json({ 
-                success: false,
-                error: 'Invalid password',
-                code: 'INVALID_PASSWORD'
-            });
-        }
-
-    } catch (err) {
-        logger.error('Static password check error:', err);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error',
-            code: 'SERVER_ERROR'
-        });
-    }
-});
 // Protected test endpoint
 router.get('/test-protected', authMiddleware.authenticate, (req, res) => {
     res.json({

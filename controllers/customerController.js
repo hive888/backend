@@ -10,6 +10,8 @@ const {sendPasswordResetEmail,sendVerificationEmail,sendWelcomeEmail,}=require('
 const jwt = require('jsonwebtoken');
 const { toE164 } = require('../utils/phone');
 const { isAdministrator, ROLE_IDS } = require('../config/roles');
+const TelegramCommunityLink = require('../models/telegramCommunityLinkModel');
+const { getTelegramBotService } = require('../services/telegramBotService');
 // const mlmController = require('./mlmController'); // Removed - not needed for this project
 const lastSendMap = new Map();
 const COOLDOWN_MS = 0 * 1000; // 60 seconds
@@ -1033,7 +1035,25 @@ async verifyOwnershipOrDeveloper(req, res, next) {
                 });
             }
 
+            const existingTelegramUserId = customer.telegram_user_id
+              ? Number(customer.telegram_user_id)
+              : null;
             await Customer.softDelete(id);
+            await TelegramCommunityLink.unlinkByCustomerId(id);
+            if (existingTelegramUserId) {
+                try {
+                    const botService = getTelegramBotService();
+                    if (botService) {
+                        await botService.removeUserFromManagedGroups(existingTelegramUserId);
+                    }
+                } catch (telegramError) {
+                    logger.error('Failed to remove deleted customer from Telegram groups', {
+                        customerId: id,
+                        telegramUserId: existingTelegramUserId,
+                        error: telegramError.message
+                    });
+                }
+            }
             
             res.json({
                 success: true,

@@ -3,47 +3,61 @@ const router = express.Router();
 const telegramController = require('../controllers/telegramController');
 const telegramValidator = require('../validators/telegramValidator');
 const validate = require('../middleware/validationMiddleware');
+const authMiddleware = require('../middleware/authMiddleware');
 
 /**
- * @route   POST /api/telegram/register
- * @desc    Register a new customer from Telegram
- * @access  Public (used internally by bot)
+ * @route   POST /api/telegram/request-link-code
+ * @desc    Return instructions for starting the bot-driven link flow
+ * @access  Authenticated Hive888 user
  */
 router.post(
-  '/register',
-  telegramValidator.registerValidation,
+  '/request-link-code',
+  authMiddleware.authenticate,
   validate,
-  telegramController.register
+  telegramController.requestLinkCode
 );
 
 /**
- * @route   POST /api/telegram/link
- * @desc    Link Telegram account to existing customer
- * @access  Public (used internally by bot)
+ * @route   POST /api/telegram/confirm-link
+ * @desc    Confirm a Telegram link code from the logged-in hub account
+ * @access  Authenticated Hive888 user
  */
 router.post(
-  '/link',
-  telegramValidator.linkValidation,
+  '/confirm-link',
+  authMiddleware.authenticate,
+  telegramValidator.confirmLinkValidation,
   validate,
-  telegramController.link
+  telegramController.confirmLink
 );
 
 /**
- * @route   POST /api/telegram/request-code
- * @desc    Request verification code for linking
- * @access  Public (used internally by bot)
+ * @route   GET /api/telegram/link-status
+ * @desc    Get Telegram link status for the logged-in user
+ * @access  Authenticated Hive888 user
+ */
+router.get(
+  '/link-status',
+  authMiddleware.authenticate,
+  validate,
+  telegramController.getLinkStatus
+);
+
+/**
+ * @route   POST /api/telegram/unlink
+ * @desc    Unlink Telegram from the logged-in Hive888 account
+ * @access  Authenticated Hive888 user
  */
 router.post(
-  '/request-code',
-  telegramValidator.requestCodeValidation,
+  '/unlink',
+  authMiddleware.authenticate,
   validate,
-  telegramController.requestCode
+  telegramController.unlink
 );
 
 /**
  * @route   GET /api/telegram/check/:telegram_user_id
- * @desc    Check if Telegram user is registered
- * @access  Public (used internally by bot)
+ * @desc    Check whether a Telegram user is linked to an active Hive888 account
+ * @access  Public/internal bot use
  */
 router.get(
   '/check/:telegram_user_id',
