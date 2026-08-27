@@ -1179,7 +1179,12 @@ model ProjectPool {
   id Int @id @default(autoincrement())
   creator_id String @db.VarChar(36)
   title String @db.VarChar(255)
+  tagline String? @db.VarChar(255)
   category String @db.VarChar(100)
+  project_type String? @db.VarChar(100)
+  industry String? @db.VarChar(100)
+  country String? @db.VarChar(100)
+  project_stage String? @db.VarChar(100)
   description String @db.Text
   deliverables Json
   timeline String @db.VarChar(100)
@@ -1190,7 +1195,17 @@ model ProjectPool {
   mentor_needed Int? @default(0) @db.SmallInt
   required_skills Json
   project_logo_url String? @db.VarChar(512)
+  cover_image_url String? @db.VarChar(512)
   status Int @default(0) @db.SmallInt
+  pitch_video_url String? @db.VarChar(512)
+  deck_url String? @db.VarChar(512)
+  target_audience String? @db.Text
+  competitive_advantage String? @db.Text
+  blockchains String? @db.VarChar(255)
+  github_link String? @db.VarChar(512)
+  twitter_link String? @db.VarChar(512)
+  discord_link String? @db.VarChar(512)
+  extra_details Json?
   created_at DateTime? @default(now()) @db.Timestamp(0)
   updated_at DateTime? @default(now()) @db.Timestamp(0)
   @@map("project_pool")

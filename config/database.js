@@ -47,16 +47,6 @@ function coerceParams(values) {
     if (value === undefined) return null;
     if (Buffer.isBuffer(value)) return value;
     if (value && typeof value === 'object' && !(value instanceof Date)) return value;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-        try {
-          return JSON.parse(trimmed);
-        } catch (_) {
-          return value;
-        }
-      }
-    }
     return value;
   });
 }

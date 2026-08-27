@@ -9,7 +9,7 @@ class TalentPoolRegistration {
         preferred_work_type, availability, heard_about_us, heard_about_other,
         skills_description, cv_file_path, status,
         certifications, projects
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
