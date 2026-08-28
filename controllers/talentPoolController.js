@@ -1,4 +1,5 @@
 const TalentPoolRegistration = require('../models/talentPoolModel');
+const RequestAssignment = require('../models/requestAssignmentModel');
 const { sendTalentRegistrationEmail } = require('../utils/email');
 const { uploadToS3, deleteFromS3 } = require('../config/s3Config');
 const multer = require('multer');
@@ -409,6 +410,67 @@ exports.getMyRegistration = async (req, res) => {
     });
   } catch (error) {
     console.error('Error in getMyRegistration:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.getMyOpportunities = async (req, res) => {
+  try {
+    const email = req.user?.username;
+    if (!email) {
+      return res.status(401).json({ error: 'Unauthorized: User email not found in token' });
+    }
+
+    const registration = await TalentPoolRegistration.findByEmail(email);
+    if (!registration) {
+      return res.status(404).json({ error: 'Registration not found' });
+    }
+
+    const opportunities = await RequestAssignment.getByTalent(registration.id);
+
+    res.json({
+      success: true,
+      data: opportunities
+    });
+  } catch (error) {
+    console.error('Error in getMyOpportunities:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.respondToOpportunity = async (req, res) => {
+  try {
+    const email = req.user?.username;
+    if (!email) {
+      return res.status(401).json({ error: 'Unauthorized: User email not found in token' });
+    }
+
+    const { assignmentId } = req.params;
+    const { status } = req.body;
+
+    if (!['accepted', 'withdrawn'].includes(status)) {
+      return res.status(400).json({ error: 'status must be "accepted" or "withdrawn"' });
+    }
+
+    const registration = await TalentPoolRegistration.findByEmail(email);
+    if (!registration) {
+      return res.status(404).json({ error: 'Registration not found' });
+    }
+
+    const assignment = await RequestAssignment.findById(assignmentId);
+    if (!assignment || assignment.talent_pool_id !== registration.id) {
+      return res.status(404).json({ error: 'Opportunity not found' });
+    }
+
+    const updated = await RequestAssignment.updateStatus(assignmentId, status);
+
+    res.json({
+      success: true,
+      message: `Opportunity marked as ${status}`,
+      data: updated
+    });
+  } catch (error) {
+    console.error('Error in respondToOpportunity:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

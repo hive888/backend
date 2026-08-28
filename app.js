@@ -200,6 +200,8 @@ app.use('/api/chapters', chaptersRoutes);
 app.use('/api/sections', sectionsRoutes);
 app.use('/api/subsections', subsectionsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin/swafri', require('./routes/swafriAdminRoutes'));
+app.use('/api/swafri', require('./routes/swafriRoutes'));
 app.use('/api/academy', academyRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/newsletter', newsletterRoutes);

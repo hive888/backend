@@ -7,6 +7,8 @@ const authMiddleware = require('../middleware/authMiddleware');
 router.post('/register', authMiddleware.authenticate, talentPoolController.handleTalentRegistration);
 router.get('/my-registration', authMiddleware.authenticate, talentPoolController.getMyRegistration);
 router.put('/my-registration', authMiddleware.authenticate, talentPoolController.updateMyRegistration);
+router.get('/my-opportunities', authMiddleware.authenticate, talentPoolController.getMyOpportunities);
+router.patch('/my-opportunities/:assignmentId/respond', authMiddleware.authenticate, talentPoolController.respondToOpportunity);
 router.get('/registrations', authMiddleware.authenticate, authMiddleware.authorize('administrator'), talentPoolController.getAllRegistrations);
 router.get('/registrations/stats', authMiddleware.authenticate, authMiddleware.authorize('administrator'), talentPoolController.getRegistrationStats);
 router.get('/registrations/filter', authMiddleware.authenticate, authMiddleware.authorize('administrator'), talentPoolController.getFilteredRegistrations);
