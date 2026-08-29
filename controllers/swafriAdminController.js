@@ -1174,7 +1174,7 @@ exports.getTalentSuggestions = async (req, res) => {
       SELECT 
         tpr.*,
         CASE 
-          WHEN tpr.skills LIKE ? THEN 1 ELSE 0 
+          WHEN tpr.skills::text LIKE ? THEN 1 ELSE 0 
         END as skills_match
       FROM talent_pool_registration tpr
       WHERE tpr.status = 0
@@ -1202,7 +1202,7 @@ exports.getTalentSuggestions = async (req, res) => {
       }
       if (request.technologies) {
         const techArray = request.technologies.split(',').map(t => t.trim());
-        const techConditions = techArray.map(() => `tpr.skills LIKE ?`);
+        const techConditions = techArray.map(() => `tpr.skills::text LIKE ?`);
         conditions.push(`(${techConditions.join(' OR ')})`);
         techArray.forEach(tech => params.push(`%"${tech}"%`));
       }
@@ -1210,7 +1210,7 @@ exports.getTalentSuggestions = async (req, res) => {
       // Match by project technologies
       if (request.project_technologies) {
         const techArray = request.project_technologies.split(',').map(t => t.trim());
-        const techConditions = techArray.map(() => `tpr.skills LIKE ?`);
+        const techConditions = techArray.map(() => `tpr.skills::text LIKE ?`);
         conditions.push(`(${techConditions.join(' OR ')})`);
         techArray.forEach(tech => params.push(`%"${tech}"%`));
       }
