@@ -1,7 +1,10 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
-const QUESTIONNAIRE_CATEGORIES = ['talent_pool', 'project_pool', 'education', 'hiring_investing'];
+const QUESTIONNAIRE_CATEGORIES = [
+  'talent_pool', 'project_pool', 'education', 'hiring_investing',
+  'talent_pool_skill', 'project_pool_need', 'education_topic', 'hiring_investing_looking_for'
+];
 
 const Interest = {
   async getAll() {
