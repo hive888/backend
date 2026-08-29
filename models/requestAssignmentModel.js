@@ -79,7 +79,7 @@ const RequestAssignment = {
       const [rows] = await db.query(
         `SELECT * FROM request_assignments 
         WHERE request_type = ? AND request_id = ? AND talent_pool_id = ?
-        ORDER BY created_at DESC
+        ORDER BY assigned_at DESC
         LIMIT 1`,
         [requestType, requestId, talentPoolId]
       );
