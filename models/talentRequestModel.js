@@ -48,7 +48,7 @@ const TalentRequest = {
           workArrangement || null,
           experienceLevel || null,
           technologies || null,
-          gdprConsent
+          gdprConsent ? 1 : 0
         ]
       );
       return result.insertId;

@@ -42,7 +42,7 @@ const ProjectRequest = {
           projectTimeline,
           projectStage || null,
           projectTechnologies || null,
-          gdprConsent
+          gdprConsent ? 1 : 0
         ]
       );
       return result.insertId;
