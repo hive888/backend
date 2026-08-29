@@ -468,6 +468,7 @@ model Customers {
   referred_by String? @db.VarChar(255)
   source String? @db.VarChar(255)
   telegram_id BigInt? @default(0)
+  interests_prompted_at DateTime? @db.Timestamp(0)
   @@index([first_name, last_name])
   @@index([is_active, deleted_at])
   @@index([telegram_user_id])

@@ -202,6 +202,7 @@ app.use('/api/subsections', subsectionsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/swafri', require('./routes/swafriAdminRoutes'));
 app.use('/api/swafri', require('./routes/swafriRoutes'));
+app.use('/api/interests', require('./routes/interestRoutes'));
 app.use('/api/academy', academyRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/newsletter', newsletterRoutes);

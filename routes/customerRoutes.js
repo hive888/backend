@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const authMiddleware = require('../middleware/authMiddleware');
 const customerController = require('../controllers/customerController');
+const interestController = require('../controllers/interestController');
 const customerValidator = require('../validators/customerValidator');
 const validate = require('../middleware/validationMiddleware');
 const router = express.Router();
@@ -127,6 +128,19 @@ router.put(
   validate,
   handleFileUpload,
   customerController.updateMyProfileDetails
+);
+
+// Signup interest questionnaire
+router.get(
+  '/me/interests',
+  authMiddleware.authenticate,
+  interestController.getMyInterests
+);
+
+router.put(
+  '/me/interests',
+  authMiddleware.authenticate,
+  interestController.saveMyInterests
 );
 
 // Route for uploading documents to S3
