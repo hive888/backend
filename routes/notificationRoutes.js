@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const authMiddleware = require('../middleware/authMiddleware');
 
 const jsonPath = path.join(__dirname, '../data/notifications.json');
 
@@ -35,9 +36,10 @@ router.get('/', (req, res) => {
 /**
  * @route   POST /api/notifications/read-all
  * @desc    Mark all notifications as read
- * @access  Public
+ * @access  Authenticated (was fully public - actively used by customer-dashboard's
+ *          own notifications page, so requiring login, not admin, matches real usage)
  */
-router.post('/read-all', (req, res) => {
+router.post('/read-all', authMiddleware.authenticate, (req, res) => {
   try {
     const list = getNotifications();
     const updated = list.map(n => ({ ...n, read: true }));
@@ -52,9 +54,9 @@ router.post('/read-all', (req, res) => {
 /**
  * @route   PATCH /api/notifications/:id/read
  * @desc    Mark a specific notification as read
- * @access  Public
+ * @access  Authenticated (was fully public)
  */
-router.patch('/:id/read', (req, res) => {
+router.patch('/:id/read', authMiddleware.authenticate, (req, res) => {
   try {
     const { id } = req.params;
     const list = getNotifications();
@@ -70,9 +72,9 @@ router.patch('/:id/read', (req, res) => {
 /**
  * @route   DELETE /api/notifications/:id
  * @desc    Delete a notification
- * @access  Public
+ * @access  Authenticated (was fully public)
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', authMiddleware.authenticate, (req, res) => {
   try {
     const { id } = req.params;
     const list = getNotifications();

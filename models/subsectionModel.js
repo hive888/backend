@@ -108,7 +108,7 @@ class Subsection {
     try {
       const [result] = await db.query(
         `INSERT INTO subsections (section_id, title, content_html, pdf_url, sort_order, quiz_required, quiz_pass_score) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [section_id, title, content_html, normalizePdfUrl(pdf_url), sort_order, quiz_required, quiz_pass_score]
+        [section_id, title, content_html, normalizePdfUrl(pdf_url), sort_order, quiz_required ? 1 : 0, quiz_pass_score]
       );
       return result.insertId;
     } catch (err) {
@@ -124,7 +124,7 @@ class Subsection {
     try {
       const [result] = await db.query(
         `UPDATE subsections SET section_id = ?, title = ?, content_html = ?, pdf_url = ?, sort_order = ?, quiz_required = ?, quiz_pass_score = ? WHERE id = ?`,
-        [section_id, title, content_html, normalizePdfUrl(pdf_url), sort_order, quiz_required, quiz_pass_score, id]
+        [section_id, title, content_html, normalizePdfUrl(pdf_url), sort_order, quiz_required ? 1 : 0, quiz_pass_score, id]
       );
       return result.affectedRows;
     } catch (err) {

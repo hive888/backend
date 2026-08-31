@@ -3,8 +3,10 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const subsectionAuditController = require('../controllers/subsectionAuditController');
 
-// All audit routes require authentication (and optionally developer/admin role)
-router.use(authMiddleware.authenticate);
+// Admin-only: internal diagnostic/repair tool for course subsection ordering
+// (no frontend calls this - it's invoked manually), and the fix endpoints
+// mutate subsection/section ordering data.
+router.use(authMiddleware.authenticate, authMiddleware.authorize('administrator'));
 
 // Subsection navigation audit endpoints
 router.get('/subsection-navigation', subsectionAuditController.auditSubsectionNavigation);

@@ -11,10 +11,10 @@ router.get('/subsections/:id', authMiddleware.authenticate, courseAccessControll
 router.post('/subsections/:id/complete', authMiddleware.authenticate, courseAccessController.completeSubsection);
 
 
-router.post('/sections/:id/quiz', authMiddleware.authenticate, courseAccessController.createSubsectionQuiz);
+router.post('/sections/:id/quiz', authMiddleware.authenticate, authMiddleware.authorize('administrator'), courseAccessController.createSubsectionQuiz);
 router.get('/sections/:id/quiz', authMiddleware.authenticate, courseAccessController.getSubsectionQuizInfo);
 router.post('/sections/:id/quiz/submit', authMiddleware.authenticate, courseAccessController.submitSubsectionQuiz);
-router.get('/sections/:id/quiz/admin', authMiddleware.authenticate, courseAccessController.getSubsectionQuizAdminView);
+router.get('/sections/:id/quiz/admin', authMiddleware.authenticate, authMiddleware.authorize('administrator'), courseAccessController.getSubsectionQuizAdminView);
 
 // Exit Exam Payment
 const exitExamPaymentController = require('../controllers/exitExamPaymentController');

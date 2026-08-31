@@ -27,6 +27,17 @@ model AccessCodeUsers {
   @@map("access_code_users")
 }
 
+model AccessCodeUsages {
+  id Int @id @default(autoincrement())
+  access_code_id Int
+  customer_id Int
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  @@unique([access_code_id, customer_id])
+  @@index([access_code_id])
+  @@index([customer_id])
+  @@map("access_code_usages")
+}
+
 model AccessCodes {
   id Int @id @default(autoincrement())
   code String @unique @db.VarChar(64)

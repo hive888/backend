@@ -8,7 +8,7 @@ router.post('/subscribe', newsletterController.subscribe);
 router.post('/unsubscribe', newsletterController.unsubscribe);
 
 // Admin routes - require authentication
-router.get('/subscribers', authMiddleware.authenticate, newsletterController.getSubscribers);
+router.get('/subscribers', authMiddleware.authenticate, authMiddleware.authorize('administrator'), newsletterController.getSubscribers);
 
 module.exports = router;
 

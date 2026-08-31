@@ -104,13 +104,29 @@ const customerController = {
     async createCustomer(req, res) {
         try {
             const { file, body } = req;
-            const { password, from, profile_picture, ...customerData } = body;
-            
+            const { password, from, profile_picture } = body;
+
+            // Only pass through fields createCustomerValidation actually validates -
+            // req.body isn't stripped of unknown keys, so without this allowlist a
+            // caller could set is_active/is_kyc_verified/etc. directly, including
+            // raw booleans that would crash the smallint columns without conversion.
+            const ALLOWED_FIELDS = [
+                'email', 'phone', 'first_name', 'last_name', 'date_of_birth', 'gender',
+                'is_email_verified', 'is_phone_verified', 'two_factor_enabled',
+                'is_kyc_verified', 'customer_type', 'source'
+            ];
+            const BOOLEAN_FIELDS = ['is_email_verified', 'is_phone_verified', 'two_factor_enabled', 'is_kyc_verified'];
+            const customerData = {};
+            for (const field of ALLOWED_FIELDS) {
+                if (body[field] === undefined) continue;
+                customerData[field] = BOOLEAN_FIELDS.includes(field) ? (body[field] ? 1 : 0) : body[field];
+            }
+
             const usersource = customerData.source;
-            
+
             // Handle profile picture upload
             const profilePictureUrl = file ? await uploadToS3(file) : profile_picture;
-            
+
             const customerPayload = {
                 ...customerData,
                 profile_picture: profilePictureUrl
@@ -956,15 +972,18 @@ async verifyOwnershipOrDeveloper(req, res, next) {
                     }
                 }
     
-                // Insert new addresses in batch if any
+                // Insert new addresses (one at a time - the pg driver doesn't support
+                // mysql2's `VALUES ?` bulk-insert shorthand with an array-of-arrays param)
                 if (newAddresses.length > 0) {
-                    await db.query(
-                        `INSERT INTO addresses 
-                        (customer_id, address_type, recipient_name, address_line1, 
-                         address_line2, city, state, postal_code, country, is_default)
-                        VALUES ?`,
-                        [newAddresses]
-                    );
+                    for (const addressRow of newAddresses) {
+                        await db.query(
+                            `INSERT INTO addresses
+                            (customer_id, address_type, recipient_name, address_line1,
+                             address_line2, city, state, postal_code, country, is_default)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            addressRow
+                        );
+                    }
                 }
     
                 // Delete addresses that weren't included in the update (and not referenced elsewhere)
@@ -973,15 +992,18 @@ async verifyOwnershipOrDeveloper(req, res, next) {
                 
                 if (addressesToDelete.length > 0) {
                     // Delete only if not referenced in orders (safe delete)
+                    // (the pg driver doesn't expand a single `?` bound to an array into
+                    // an IN-list the way mysql2 does, so build explicit placeholders)
+                    const deletePlaceholders = addressesToDelete.map(() => '?').join(', ');
                     await db.query(
-                        `DELETE FROM addresses 
-                        WHERE address_id IN (?) 
+                        `DELETE FROM addresses
+                        WHERE address_id IN (${deletePlaceholders})
                         AND customer_id = ?
                         AND NOT EXISTS (
-                            SELECT 1 FROM orders 
+                            SELECT 1 FROM orders
                             WHERE shipping_address_id = addresses.address_id
                         )`,
-                        [addressesToDelete, customerId]
+                        [...addressesToDelete, customerId]
                     );
                 }
             }

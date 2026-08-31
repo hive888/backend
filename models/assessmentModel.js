@@ -27,8 +27,13 @@ const DB_MAP = {
     unhappyClientAnswer: 'unhappy_client_answer', dontUnderstandTaskAnswer: 'dont_understand_task_answer', correctionReactionAnswer: 'correction_reaction_answer',
     urgentExtraTimeAnswer: 'urgent_extra_time_answer', betterOfferAnswer: 'better_offer_answer', whySwafri: 'why_swafri',
     desiredProjects: 'desired_projects', uniqueness: 'uniqueness', careerGoals: 'career_goals', confirmTrueAnswers: 'confirm_true_answers',
-    agreeScreening: 'agree_screening', agreeInterview: 'agree_interview', agreeRemoteContract: 'agree_remote_contract', readinessScore: 'readiness_score'
+    agreeScreening: 'agree_screening', agreeInterview: 'agree_interview', agreeRemoteContract: 'agree_remote_contract', readinessScore: 'readiness_score',
+    selectedSkills: 'selected_skills', answers: 'answers', projectUrl: 'project_url', projectDescription: 'project_description',
+    behavioralScores: 'behavioral_scores', rawPayload: 'raw_payload'
 };
+
+// Columns that are Int @db.SmallInt (0/1) in the DB but arrive as real JS booleans
+const BOOLEAN_FIELDS = new Set(['confirm_true_answers', 'agree_screening', 'agree_interview', 'agree_remote_contract']);
 
 class Assessment {
     static async create(payload) {
@@ -38,10 +43,13 @@ class Assessment {
         // Map payload to db schema
         Object.keys(payload).forEach(key => {
             if (DB_MAP[key]) {
-                dbFields.push(DB_MAP[key]);
+                const dbField = DB_MAP[key];
+                dbFields.push(dbField);
                 const val = payload[key];
-                // Stringify JSON arrays for techLanguages, frameworks, databases, devopsTools
-                if (Array.isArray(val) || (typeof val === 'object' && val !== null)) {
+                if (BOOLEAN_FIELDS.has(dbField)) {
+                    values.push(val ? 1 : 0);
+                } else if (Array.isArray(val) || (typeof val === 'object' && val !== null)) {
+                    // Stringify JSON arrays for techLanguages, frameworks, databases, devopsTools, etc.
                     values.push(JSON.stringify(val));
                 } else {
                     values.push(val);

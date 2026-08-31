@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const authMiddleware = require('../middleware/authMiddleware');
 
 const jsonPath = path.join(__dirname, '../data/partners.json');
 
@@ -34,9 +35,11 @@ router.get('/', (req, res) => {
 /**
  * @route   POST /api/partners
  * @desc    Register a new partner organization
- * @access  Public
+ * @access  Authenticated (was fully public - actively used by customer-dashboard's
+ *          own Partner Portal "Register as an Ecosystem Partner" form by regular
+ *          logged-in customers, so requiring login, not admin, matches real usage)
  */
-router.post('/', (req, res) => {
+router.post('/', authMiddleware.authenticate, (req, res) => {
   try {
     const { name, type, website } = req.body;
     if (!name || !website) {
@@ -54,7 +57,9 @@ router.post('/', (req, res) => {
       type: type || 'Recruiter',
       website,
       logo: '',
-      verified: true
+      // Self-submitted registrations start unverified - verification is a
+      // separate admin action, not something a submitter can grant themselves.
+      verified: false
     };
 
     partners.push(newPartner);

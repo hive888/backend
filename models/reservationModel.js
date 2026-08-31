@@ -498,16 +498,6 @@ async register({
     }
   }
 
-
-  async updatePaymentStatusByOrderId(orderId, status) {
-  const query = `
-    UPDATE reservations 
-    SET payment_status = ?, updated_at = NOW()
-    WHERE order_id = ?
-  `;
-  
-  await db.query(query, [status, orderId]);
-}
 }
 
 module.exports = new Reservation();
