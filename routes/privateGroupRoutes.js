@@ -3,8 +3,15 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const authMiddleware = require('../middleware/authMiddleware');
 
 const jsonPath = path.join(__dirname, '../data/private-groups.json');
+
+// All routes require login - the web app's /private-groups page itself
+// isn't in middleware.ts's publicPages allowlist, so there was never a
+// legitimate logged-out caller; this was a pure oversight (join/leave/post/
+// comment/like were previously reachable with no auth at all).
+router.use(authMiddleware.authenticate);
 
 function getGroups() {
   if (!fs.existsSync(jsonPath)) {
@@ -20,7 +27,7 @@ function saveGroups(data) {
 /**
  * @route   GET /api/private-groups
  * @desc    Get all active private groups
- * @access  Public
+ * @access  Authenticated
  */
 router.get('/', (req, res) => {
   try {
@@ -41,7 +48,7 @@ router.get('/', (req, res) => {
 /**
  * @route   POST /api/private-groups/:groupId/posts
  * @desc    Add a post to a private group
- * @access  Public
+ * @access  Authenticated
  */
 router.post('/:groupId/posts', (req, res) => {
   try {
@@ -84,7 +91,7 @@ router.post('/:groupId/posts', (req, res) => {
 /**
  * @route   POST /api/private-groups/:groupId/posts/:postId/comments
  * @desc    Add a comment to a post inside a group
- * @access  Public
+ * @access  Authenticated
  */
 router.post('/:groupId/posts/:postId/comments', (req, res) => {
   try {
@@ -134,7 +141,7 @@ router.post('/:groupId/posts/:postId/comments', (req, res) => {
 /**
  * @route   POST /api/private-groups/:groupId/posts/:postId/like
  * @desc    Like a post inside a group
- * @access  Public
+ * @access  Authenticated
  */
 router.post('/:groupId/posts/:postId/like', (req, res) => {
   try {
@@ -168,7 +175,7 @@ router.post('/:groupId/posts/:postId/like', (req, res) => {
 /**
  * @route   POST /api/private-groups/:groupId/join
  * @desc    Join a private group
- * @access  Public
+ * @access  Authenticated
  */
 router.post('/:groupId/join', (req, res) => {
   try {
@@ -205,7 +212,7 @@ router.post('/:groupId/join', (req, res) => {
 /**
  * @route   POST /api/private-groups/:groupId/leave
  * @desc    Leave a private group
- * @access  Public
+ * @access  Authenticated
  */
 router.post('/:groupId/leave', (req, res) => {
   try {
