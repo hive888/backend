@@ -8,6 +8,8 @@ class TelegramBotService {
     this.token = process.env.TELEGRAM_BOT_TOKEN;
     this.privateGroupId = this.parseChatId(process.env.TELEGRAM_PRIVATE_GROUP_ID);
     this.publicGroupId = this.parseChatId(process.env.TELEGRAM_PUBLIC_GROUP_ID);
+    this.privateGroupLink = process.env.TELEGRAM_PRIVATE_GROUP_LINK || null;
+    this.publicGroupLink = process.env.TELEGRAM_PUBLIC_GROUP_LINK || null;
     this.bot = null;
 
     if (!this.token) {
@@ -47,6 +49,13 @@ class TelegramBotService {
     if (process.env.TELEGRAM_BOT_LINK) return process.env.TELEGRAM_BOT_LINK;
     if (process.env.TELEGRAM_BOT_USERNAME) return `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}`;
     return 'https://t.me';
+  }
+
+  getGroupLinkButtons() {
+    const buttons = [];
+    if (this.privateGroupLink) buttons.push([{ text: 'Join Private Group', url: this.privateGroupLink }]);
+    if (this.publicGroupLink) buttons.push([{ text: 'Join Public Group', url: this.publicGroupLink }]);
+    return buttons;
   }
 
   stopPolling() {
@@ -131,12 +140,18 @@ class TelegramBotService {
     try {
       const existing = await TelegramCommunityLink.findLinkByTelegramUserId(telegramUserId);
       if (existing && !existing.deleted_at) {
+        const buttons = this.getGroupLinkButtons();
         const statusText =
           `<b>Your Telegram is already linked.</b>\n\n` +
-          `Hive888 account: <b>${existing.email}</b>\n` +
-          `Private group access: request to join the managed groups and I will approve you automatically.\n\n` +
-          `Need to relink? Contact support first.`;
-        await this.bot.sendMessage(chatId, statusText, { parse_mode: 'HTML' });
+          `Hive888 account: <b>${existing.email}</b>\n\n` +
+          (buttons.length
+            ? `Tap below to join your Hive888 group${buttons.length > 1 ? 's' : ''} — you'll be approved automatically.`
+            : `Private group access: request to join the managed groups and I will approve you automatically.`) +
+          `\n\nNeed to relink? Contact support first.`;
+        await this.bot.sendMessage(chatId, statusText, {
+          parse_mode: 'HTML',
+          ...(buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}),
+        });
         return;
       }
 
@@ -173,13 +188,19 @@ class TelegramBotService {
         return;
       }
 
+      const buttons = this.getGroupLinkButtons();
       await this.bot.sendMessage(
         chatId,
         `<b>Telegram linked</b>\n\n` +
         `Hive888 account: <b>${link.email}</b>\n` +
-        `Linked at: <b>${new Date(link.linked_at).toISOString().replace('T', ' ').slice(0, 16)} UTC</b>\n\n` +
-        `Request to join the managed groups and I will approve you automatically.`,
-        { parse_mode: 'HTML' }
+        `Linked at: <b>${new Date(link.linked_at).toISOString().replace('T', ' ').slice(0, 16)} UTC</b>` +
+        (buttons.length
+          ? ''
+          : `\n\nRequest to join the managed groups and I will approve you automatically.`),
+        {
+          parse_mode: 'HTML',
+          ...(buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}),
+        }
       );
     } catch (error) {
       logger.error('Failed to load Telegram status', { telegramUserId, error: error.message });
