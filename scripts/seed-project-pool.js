@@ -151,9 +151,10 @@ async function seedProject(slug, ownerId) {
     project_stage: data.project_stage || null,
     description: data.description,
     deliverables: data.deliverables || [],
-    timeline: data.timeline || 'Flexible',
-    team_structure: data.team_structure || 'TBD',
-    budget: data.budget || 'TBD',
+    // NOT NULL columns: store empty strings rather than invented placeholder values
+    timeline: data.timeline || '',
+    team_structure: data.team_structure || '',
+    budget: data.budget || '',
     funding_goal: data.funding_goal || null,
     mentor_needed: data.mentor_needed ? 1 : 0,
     required_skills: data.required_skills || [],

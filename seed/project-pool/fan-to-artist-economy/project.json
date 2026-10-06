@@ -1,0 +1,47 @@
+{
+  "title": "Fan-to-Artist Economy",
+  "tagline": "Web3 direct-to-fan music and NFT ticketing",
+  "category": "NFT",
+  "project_type": "Research Project",
+  "industry": "Entertainment",
+  "country": "Global",
+  "project_stage": "Research Stage",
+  "description": "Group 2's analysis of blockchain in the music industry — streaming, tokenized royalties and NFT concert tickets — with a managerial deep dive into NFT ticket resale that fights fake tickets and scalping while paying artists a share of secondary sales.",
+  "deliverables": [],
+  "required_skills": [],
+  "mentor_needed": false,
+  "target_audience": "Artists, fans and event organizers",
+  "competitive_advantage": "Compared with a traditional database run by one operator, blockchain offers shared verification across parties, a tamper-resistant transaction history and programmable, verifiable smart contracts — at the cost of extra technical complexity.",
+  "extra_details": {
+    "founder": {
+      "name": "Group 2 — Financial Decision Making & Blockchain Application",
+      "org": "PTGR",
+      "position": "Supervised by Dr. Pan Theo Grosse-Ruyken"
+    },
+    "overview": {
+      "executiveSummary": "Blockchain enables direct artist-to-fan connections via smart contracts, removing unnecessary gatekeepers and turning fans from passive consumers into active participants and co-owners. The project asks how blockchain is applied in music and what real industry problems it genuinely solves, focusing on copyright, royalties, music NFTs, fan engagement and ticketing.",
+      "problemStatement": "Middleman dominance: artists receive only about 12% of the $43 billion in total revenue. Opaque copyrights: ownership metadata is fragmented and unclear. Delayed royalties: payouts take 6–18 months through complex layers. In ticketing: fake tickets, scalping, uncontrolled resale, lack of identity, and artists receiving little or nothing from the resale market.",
+      "proposedSolution": "Public transparency through immutable on-chain ownership records, verifiable digital assets for fans, and smart contracts for instant, automated royalty distribution. For ticketing: an NFT gives verifiable ticket ownership, smart contracts set programmable resale rules, KYC verifies identity, and royalty rules let artists receive part of the resale revenue — with resale through an official marketplace and every ownership transfer recorded on-chain.",
+      "targetUsers": "Artists, fans and concert organizers",
+      "expectedImpact": "Easier ticket authentication and ownership verification, better control of secondary sales, and a share of resale revenue for artists — depending on real users, events, transactions and revenue"
+    },
+    "team": {
+      "experience": "Group 2 of the Financial Decision Making & Blockchain Application programme, supervised by Dr. Pan Theo Grosse-Ruyken (PTGR)."
+    },
+    "product": {
+      "description": "Real-world applications: Audius — a decentralized music streaming platform with direct artist–fan connection and 250M+ streams reported by 2025. Royal — music NFTs that tokenize royalty rights so fans can earn a share of royalties. GET Protocol — NFT ticketing with verifiable ownership and programmable resale rules. BitSong — 3,000+ users, ~2 million blocks and 300%+ team growth, addressing royalty transparency and dependence on intermediaries.",
+      "features": "Recommended architecture: blockchain handles ownership management, ticket anti-counterfeiting and business logic via smart contracts, with duties separated between public and private chains; traditional systems handle privacy and identity management, a secondary database for real-time access authentication, and the web service and payment gateway.",
+      "techStack": "Blockchain, Smart Contracts, NFTs, KYC, Public & Private Chains"
+    },
+    "risks": [
+      { "risk": "Bots in the primary ticket market remain hard to prevent" },
+      { "risk": "User adoption barriers and crypto-wallet requirements" },
+      { "risk": "Legal challenges and no common framework (copyright, consumer protection, data privacy, ticketing, tax)" },
+      { "risk": "Long-term sustainability across technical (security, scalability, fees), operational (KYC, support, marketplace) and economic (revenue, operating cost) areas" }
+    ],
+    "documents": {},
+    "demo": {},
+    "opportunities": {},
+    "roadmap": {}
+  }
+}

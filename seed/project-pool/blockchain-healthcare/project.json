@@ -1,0 +1,47 @@
+{
+  "title": "Blockchain Application: Healthcare",
+  "tagline": "Moving health records from institution-owned silos to patient-owned, blockchain-secured records",
+  "category": "HealthTech",
+  "project_type": "Research Project",
+  "industry": "Healthcare",
+  "country": "Global",
+  "project_stage": "Research Stage",
+  "description": "An analysis of how blockchain and smart contracts can fix fragmented, insecure healthcare data: patient-controlled access to medical records, automated fraud checks against upcoding, and end-to-end drug traceability — and where blockchain's limits are.",
+  "deliverables": [],
+  "required_skills": [],
+  "mentor_needed": false,
+  "target_audience": "Patients, hospitals and doctors, insurance companies and pharmacies",
+  "competitive_advantage": "Replaces centralized hospital servers (a single point of failure) with an encrypted, distributed network and standardized protocols, consolidating each patient's records into one profile the patient controls. Smart contracts act as automated auditors that grant time-limited data access and verify treatment claims against immutable records.",
+  "extra_details": {
+    "founder": {
+      "name": "Student team — Financial Decision Making & Blockchain Application",
+      "org": "PTGR",
+      "position": "Supervised by Dr. Pan Theo Grosse-Ruyken"
+    },
+    "overview": {
+      "executiveSummary": "Healthcare data — electronic health and medical records holding diagnoses, prescriptions and lab results — exists, but is spread across patients, hospitals, insurers and pharmacies in separate systems. This project examines how blockchain can turn that fragmented, centralized landscape into a decentralized, patient-centric one, using smart contracts to automate who can access data and to audit claims, while being clear about what blockchain cannot solve.",
+      "problemStatement": "Fragmented data: different systems make sharing difficult, so doctors cannot quickly see a patient's full history, leading to harder decisions and inappropriate treatment. Weak data security: centralized databases invite cyberattacks — the 2018 SingHealth attack in Singapore compromised 1.5 million patients' information, and the Change Healthcare breach exposed medical, insurance, personal and billing data. Limited patient control: patients cannot see who accessed their health information, when, or how it is used.",
+      "proposedSolution": "Encrypt and distribute health data across a peer-to-peer network, decouple personal health records from individual hospitals, and consolidate them into a single profile controlled by the patient. Medical data stays off-chain with only hashes on-chain; a doctor's access request goes through a smart contract that the patient approves, and every request is permanently logged. Example: a patient grants a doctor access for 7 days — the contract checks consent, identity and duration, grants access to the encrypted record, and automatically revokes it after 7 days.",
+      "targetUsers": "Patients, doctors, hospitals, laboratories, insurers and pharmacies",
+      "expectedImpact": "Restored data ownership, faster emergency care, secure collaboration between institutions, and less billing and research fraud"
+    },
+    "team": {
+      "experience": "Student team from the Financial Decision Making & Blockchain Application programme, supervised by Dr. Pan Theo Grosse-Ruyken (PTGR)."
+    },
+    "product": {
+      "description": "Key use cases: (1) Patient-led access — the patient holds a cryptographic key pair and approves doctors' access requests via smart contract. (2) Accelerated credentialing — institutions digitally sign credentials written to the blockchain for instant verification. (3) Remote monitoring — wearables capture readings, only hashes go on-chain, and smart contracts check readings against medical thresholds and alert clinicians in real time.",
+      "features": "Real-world reference: Estonia runs the first nationwide blockchain-based digital health ecosystem, securing 40M+ health records, integrating every citizen's EHR, streamlining insurance claims, avoiding redundant tests and enabling cross-border care across 11+ EU countries. Against moral hazard, smart contracts cross-reference claims with immutable wearable data (e.g. denying a $500 heart-rate intervention claim when no abnormal reading was recorded), and research goals registered on-chain before a study prevent outcome manipulation.",
+      "techStack": "Blockchain, Smart Contracts, Cryptographic Key Pairs, Off-chain Storage with On-chain Hashes, IoT Wearables"
+    },
+    "risks": [
+      { "risk": "Privacy concerns and difficult data correction on an immutable ledger" },
+      { "risk": "High implementation effort and limited scalability" },
+      { "risk": "Smart contract risks" },
+      { "risk": "Moral hazard cannot be fully eliminated — blockchain verifies digital events, not the physical quality of care", "mitigation": "e.g. a nurse can check in and out of a GPS-logged visit without giving actual care; blockchain records it flawlessly but cannot police human behaviour" }
+    ],
+    "documents": {},
+    "demo": {},
+    "opportunities": {},
+    "roadmap": {}
+  }
+}

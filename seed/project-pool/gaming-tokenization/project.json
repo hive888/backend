@@ -1,0 +1,49 @@
+{
+  "title": "Tokenization in the Gaming Industry",
+  "tagline": "Does blockchain actually fix gaming? Ownership, tokenomics and lessons from Axie Infinity and CS2",
+  "category": "NFT",
+  "project_type": "Research Project",
+  "industry": "Entertainment",
+  "country": "Global",
+  "project_stage": "Research Stage",
+  "description": "Group 3's study of turning in-game items into on-chain tokens: why players don't really own the skins they buy, how tokenization changes ownership and trading, which token economies survive, and a decision framework for when blockchain adds real value to a game.",
+  "deliverables": [],
+  "required_skills": [],
+  "mentor_needed": false,
+  "target_audience": "Game studios, publishers and players",
+  "competitive_advantage": "Tokenization adds verifiable ownership and provenance, transferable assets with secondary markets, and programmability — e.g. automatic developer royalties on every resale (95% to the seller, 5% to the developer). The project's framework says to tokenize only items that are rare, valuable, tradable and player-driven, and never just because blockchain is available.",
+  "extra_details": {
+    "founder": {
+      "name": "Group 3 — Financial Decision Making & Blockchain Application",
+      "org": "PTGR",
+      "position": "Instructed by Dr. Pan Theo Grosse-Ruyken"
+    },
+    "overview": {
+      "executiveSummary": "Gaming is a $201.6B market, $103.5B of it virtual goods such as skins, battle passes and virtual land, and $36.19B addressable by on-chain gaming. Yet players who spend $500 on a skin hold only a temporary, revocable license. This project examines tokenization — converting cosmetics, gear and currencies into NFTs (ERC-721/ERC-1155) held in player wallets — and concludes that the goal is not to make gaming more blockchain, but to make gaming better where blockchain adds value.",
+      "problemStatement": "The illusion of digital ownership: under modern Terms of Service, publishers can alter, lock or erase assets at will. Walled gardens prevent exporting items to other platforms, decommissioned servers delete player collections, and account bans forfeit the entire inventory — billions flow into non-refundable, closed currencies like V-Bucks, Riot Points and Robux.",
+      "proposedSolution": "Player wallet custody of private keys, game items mapped to on-chain tokens through smart contracts, and transparent, auditable provenance that guarantees verifiable scarcity. Economies must be designed before the token: gameplay first, sinks matching faucets (Δ Supply = Faucets − Sinks), skill-based rewards, and governance separated from in-game utility currency, following a 6-step protocol: player demand → necessity test → sinks first → match faucets → taper rewards → adversarial test.",
+      "targetUsers": "Game studios and players",
+      "targetMarket": "$103.5B virtual-goods market; $36.19B on-chain gaming",
+      "expectedImpact": "Durable game economies where ownership is real and tokens support gameplay rather than speculation"
+    },
+    "team": {
+      "experience": "Group 3 of the Financial Decision Making & Blockchain Application programme, instructed by Dr. Pan Theo Grosse-Ruyken (PTGR)."
+    },
+    "product": {
+      "description": "Case studies: Axie Infinity (Sky Mavis, Ronin sidechain) — at its mid-2021 peak 1 AXS = $165, 2.7M daily users and over $4B in volume; by mid-2022 AXS fell to $8.5 and 95% of players left, showing how play-to-earn economies collapse when payouts decline. Counter-Strike 2 — a ~$5.9B item economy with 1.4M+ concurrent players and no blockchain; Valve's trade-up rule change cut market value 30% in 48 hours, but it recovered to about 75–80% by early 2026.",
+      "features": "Decision framework: can Web2 already solve the problem? Do players need independent ownership or transfer? Does the asset have meaningful economic value? Does the benefit justify the added cost and complexity? Only if all answers point that way can blockchain create real value. Recommendations: gameplay first, adopt blockchain selectively, invisible Web3 (UX first), and design the economy before the token.",
+      "techStack": "NFTs, ERC-721, ERC-1155, Smart Contracts, Player Wallets"
+    },
+    "risks": [
+      { "risk": "Token inflation, speculative bubbles, over-financialization and bot/Sybil farming", "mitigation": "Architect sustainability from day one: real sinks, tapered rewards and adversarial testing" },
+      { "risk": "Scalability, latency and transaction costs versus fast gameplay" },
+      { "risk": "UX complexity of wallets, keys and fees (e.g. Ubisoft Quartz)" },
+      { "risk": "New attack surfaces: wallets, smart contracts, bridges and marketplaces" },
+      { "risk": "Owning a token ≠ owning the asset or IP, and tokenization ≠ cross-game interoperability" }
+    ],
+    "documents": {},
+    "demo": {},
+    "opportunities": {},
+    "roadmap": {}
+  }
+}

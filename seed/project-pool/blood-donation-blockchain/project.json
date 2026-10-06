@@ -1,0 +1,48 @@
+{
+  "title": "Blockchain for Blood Donation",
+  "tagline": "Sharing, verifying and tracing blood information across hospitals, blood centers and labs",
+  "category": "HealthTech",
+  "project_type": "Research Project",
+  "industry": "Healthcare",
+  "country": "Global",
+  "project_stage": "Research Stage",
+  "description": "Group 4's study of how a shared blockchain ledger can connect fragmented blood-donation data — linking each blood unit to a unique digital ID and tracing it from donation to transfusion — with case studies from Bloodchain, the BDSC framework and Vietnam's Giot Mau Vang app.",
+  "deliverables": [],
+  "required_skills": [],
+  "mentor_needed": false,
+  "target_audience": "Hospitals, blood centers, laboratories and blood donors",
+  "competitive_advantage": "Blockchain connects fragmented blood information through a shared, verified and traceable system: a decentralized ledger shared by authorized hospitals and blood centers, cryptographic verification of clinical records, tamper-evident data, and a unique digital ID for every blood unit with an auditable chain from donation → testing → storage → transfusion.",
+  "extra_details": {
+    "founder": {
+      "name": "Group 4 — Financial Decision Making and Blockchain Applications",
+      "org": "PTGR",
+      "position": "Lecturer: Dr. Pan Theo Grosse-Ruyken"
+    },
+    "overview": {
+      "executiveSummary": "More than 120 million blood donations are collected every year, yet more donations do not mean equal access to blood: the median donation rate is 28.9 per 1,000 people in high-income countries versus 4.5 in low-income countries. The real challenge is not only collecting blood but making sure it is available when patients need it most. This project analyses how blockchain can make blood information shareable, verifiable and traceable, and what it cannot solve.",
+      "problemStatement": "Blood information is fragmented and disconnected, making it difficult to share, verify and trace. Globally, a study of 19 sites across 15 EU countries found separate information systems, limited interoperability and inconsistent data standards. In Vietnam, 1.75M+ units are collected annually, but separate provincial systems make synchronization and retrieval difficult — during COVID-19 in 2021, daily demand of 200–300 platelet units met a remaining stock of just 13.",
+      "proposedSolution": "A shared ledger that connects authorized hospitals and blood centers and synchronizes donor records and inventory (SHARE); cryptographic verification of clinical records that makes unauthorized changes detectable (VERIFY); and a unique digital ID per blood unit with an auditable journey from donation to transfusion (TRACE).",
+      "targetUsers": "Hospitals, blood centers, laboratories and donors",
+      "targetMarket": "Blood-management systems globally, with Vietnam as a focus case (4.3M donor records in the national core system)",
+      "expectedImpact": "Faster, safer and more trustworthy blood donation with less waste"
+    },
+    "team": {
+      "experience": "Group 4 of the Financial Decision Making and Blockchain Applications programme, lectured by Dr. Pan Theo Grosse-Ruyken (PTGR)."
+    },
+    "product": {
+      "description": "Case studies: Bloodchain by ConnectHealth — immutable end-to-end tracking of biological products, linking donors, blood banks and hospitals for emergency matching, with donor-controlled, tamper-resistant screening records. BDSC Framework (Sadri et al., 2021) — an Ethereum-based blueprint with role-based smart contracts, hybrid storage (IDs on-chain, test files on IPFS), IoT cold-chain monitoring and AI demand forecasting. Giot Mau Vang (Ho Chi Minh City Red Cross & HCA, 2021) — 605,000+ registrations, 71.7% repeat donors and 100,000+ monthly app visits, with blockchain-based unit IDs planned for Phase 2.",
+      "features": "Managerial recommendations for Giot Mau Vang: define the strategic case (strategic value, ecosystem readiness, value vs. cost, governance), design the future blood-data ecosystem (data & interoperability, trust & traceability, privacy & governance), then pilot, measure and scale.",
+      "techStack": "Blockchain, Smart Contracts, Ethereum, IPFS, IoT, AI Forecasting"
+    },
+    "risks": [
+      { "risk": "Garbage in, garbage out — a wrong blood type, barcode or test result becomes an immutable wrong record" },
+      { "risk": "Physical-digital disconnect — blockchain cannot monitor temperature, location or storage conditions" },
+      { "risk": "System interoperability — different HIS/LIS systems may not communicate seamlessly" },
+      { "risk": "Privacy & regulatory conflicts — Vietnam's Decree 13/2023/ND-CP grants a right to data erasure that conflicts with immutability" }
+    ],
+    "documents": {},
+    "demo": {},
+    "opportunities": {},
+    "roadmap": {}
+  }
+}
