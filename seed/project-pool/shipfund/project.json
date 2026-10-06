@@ -1,0 +1,97 @@
+{
+  "title": "ShipFund",
+  "tagline": "A blockchain-based, oracle-verified invoice financing platform for logistics companies",
+  "category": "FinTech",
+  "project_type": "Blockchain/Web3 Project",
+  "industry": "Finance",
+  "country": "Global",
+  "project_stage": "Idea Stage",
+  "description": "ShipFund helps logistics SMEs get paid early on their invoices. A delivered shipment's invoice is verified by an oracle, tokenized as a receivable, and funded by investors through smart contracts, so the SME gets cash in under 24 hours instead of waiting 51+ days for its customer to pay.",
+  "timeline": "Flexible",
+  "team_structure": "5 members",
+  "budget": "USD 4,000",
+  "funding_goal": "USD 4,000",
+  "mentor_needed": true,
+  "required_skills": ["Technical Co-Founder", "Full Stack Developer", "Legal Advisor", "Marketing Specialist"],
+  "deliverables": [
+    "MVP build: Oracle verification, receivable tokenization and smart-contract settlement",
+    "Pilot: Small pilot with selected logistics SMEs and verified invoices",
+    "Validation: Validate invoice demand, investor participation and the transaction process",
+    "Scale: Reach 20+ logistics SME clients and $60K+ revenue"
+  ],
+  "target_audience": "Logistics SMEs with delayed B2B payments that need cash for operating expenses (fuel, driver wages, warehousing)",
+  "competitive_advantage": "1% total discount (70% to ShipFund, 30% to investors), oracle-based verification and processing in under 24 hours. Banks and financial institutions charge 0.5–2.5% with manual audits, collateral and 1–3 weeks of processing; Polytrade charges 1.0–2.0% with third-party verification and 1–3 days of processing.",
+  "blockchains": "Multi-Chain",
+  "extra_details": {
+    "founder": {
+      "name": "Group 9 — Financial Decision Making & Blockchain Application",
+      "org": "PTGR",
+      "position": "Student venture, supervised by Dr. Pan Theo Grosse-Ruyken"
+    },
+    "overview": {
+      "executiveSummary": "ShipFund connects logistics companies that need early cash with investors who provide the funding. Logistics SMEs upload a completed delivery's invoice, an oracle verifies the delivery and bill data, and the receivable is tokenized on-chain. Investors buy the tokens to fund the invoice, the SME receives early payment, and when the customer pays at maturity, smart contracts automatically distribute the returns to investors.",
+      "problemStatement": "Working-capital pressure: B2B payments take 51 days on average to collect, and 77 days in emerging markets, which causes cash-flow problems for cash-intensive logistics operations (fuel, driver wages, warehouses). SMEs often lack collateral and face high loan rejection rates (41%), limiting access to traditional financing. Invoice financing is costly (2–5% of the invoice per month) and slow, with manual verification taking days to weeks and real fraud risk.",
+      "proposedSolution": "A seven-step, blockchain-enabled flow: (1) the logistics company completes a delivery and issues an invoice; (2) it uploads the bill to ShipFund; (3) an oracle verifies the delivery and bill information; (4) the receivable is tokenized; (5) investors fund it; (6) the logistics company receives early payment; (7) the customer pays at maturity and investors get paid. The blockchain records ownership and transactions for full transparency.",
+      "targetUsers": "Logistics SMEs with delayed payments",
+      "targetMarket": "Crypto-native retail, Web3 and institutional investors seeking real-world-asset (RWA) yield",
+      "expectedImpact": "Faster, more transparent and more accessible working capital for logistics SMEs"
+    },
+    "team": {
+      "size": "5",
+      "members": [],
+      "experience": "Student team from the Financial Decision Making & Blockchain Application programme, supervised by Dr. Pan Theo Grosse-Ruyken (PTGR)."
+    },
+    "product": {
+      "description": "An invoice-financing platform built on four layers: an Oracle that verifies delivery and invoice data, a Tokenization layer that converts each receivable into a token, Smart Contracts that handle automatic funding and distribution, and a Blockchain that records ownership and transactions.",
+      "features": "Direct financing access for logistics SMEs; oracle-verified receivables; tokenized receivables that investors can fund; smart contracts for automated settlement; on-chain invoice records that prevent duplicates.",
+      "techStack": "Blockchain, Smart Contracts, Tokenization, Oracle (Chainlink Functions), IoT/API Verification",
+      "validation": {
+        "hasInterviews": false,
+        "hasPilotUsers": false,
+        "hasActiveUsers": false,
+        "hasPayingCustomers": false,
+        "hasStrategicPartners": false,
+        "notes": "Next step is a small pilot with selected logistics SMEs and verified invoices."
+      },
+      "traction": {
+        "revenue": "Projected Y1: $6,440 in month 1 (break-even vs. MVP cost), peaking at $10,220/month"
+      }
+    },
+    "risks": [
+      { "risk": "Oracle & technical risk — smart-contract bugs or manipulated data", "mitigation": "Multi-source verification, audits and an emergency pause" },
+      { "risk": "Legal & regulatory risk — unclear rules for tokenized receivables", "mitigation": "Follow applicable digital-asset and electronic-invoice regulations" },
+      { "risk": "Fraud risk — fake or duplicated invoices", "mitigation": "IoT/API verification and unique on-chain invoice records" }
+    ],
+    "documents": {},
+    "demo": {},
+    "opportunities": {
+      "talentNeeded": ["Technical Co-Founder", "Full Stack Developer", "Legal Advisor", "Marketing Specialist"],
+      "positions": [],
+      "mentorship": {
+        "needed": true,
+        "areas": ["Regulation & Compliance", "RWA Tokenization", "Go-to-Market"],
+        "description": "Guidance on the regulation of tokenized receivables, RWA investor networks and partnerships with logistics associations."
+      },
+      "partnership": {
+        "lookingFor": ["Logistics associations & B2B networks", "RWA / Web3 investor communities"],
+        "details": "Industry partnerships with logistics associations and B2B networks to onboard SMEs; RWA/Web3 communities and fintech/blockchain events to reach investors."
+      },
+      "funding": {
+        "status": "Seeking Funding",
+        "amount": "4000",
+        "currency": "USD",
+        "purpose": "Estimated MVP cost: Development 45%, Marketing 20%, Design/Security/Legal 20%, Oracle/Blockchain & Infrastructure 15%.",
+        "model": "Revenue Share",
+        "notes": "Revenue model: 1% discount on invoice face value, split 70% ShipFund / 30% investors."
+      }
+    },
+    "roadmap": {
+      "milestones": [
+        { "id": 1, "name": "MVP Build", "description": "Oracle verification, receivable tokenization and smart-contract settlement", "status": "Planned" },
+        { "id": 2, "name": "Pilot", "description": "Small pilot with selected logistics SMEs and verified invoices", "status": "Planned" },
+        { "id": 3, "name": "Validation", "description": "Validate invoice demand, investor participation and the transaction process before scaling", "status": "Planned" },
+        { "id": 4, "name": "Scale", "description": "Reach 20+ logistics SME clients and $60K+ ShipFund revenue", "status": "Planned" }
+      ]
+    }
+  }
+}

@@ -17,7 +17,8 @@
     "db:import-selfstudy": "node scripts/import-selfstudy-from-dump.js",
     "db:import-dump": "node scripts/import-full-dump-to-postgres.js",
     "db:fix-roles": "node scripts/fix-user-roles.js",
-    "db:sync-subsection-pdfs": "node scripts/sync-subsection-pdfs.js"
+    "db:sync-subsection-pdfs": "node scripts/sync-subsection-pdfs.js",
+    "seed:projects": "node scripts/seed-project-pool.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
